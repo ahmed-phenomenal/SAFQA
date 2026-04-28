@@ -198,7 +198,7 @@ closeConfirm();
 
 function handleLogout(){
 localStorage.removeItem("userToken");
-navigate("/login");
+// navigate("/login");
 }
 
 /* CARD */

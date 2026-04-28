@@ -15,7 +15,6 @@ import {
 import icon from "../../assets/Person at the Center of Circles.png";
 import "./admin.css";
 import api from "../../API/axios";
-import Skelaton from "../../Components/Skelaton"; // change path only if your file is in another folder
 
 export default function Admin() {
   const navigate = useNavigate();
@@ -250,7 +249,7 @@ export default function Admin() {
 
   function handleLogout() {
     localStorage.removeItem("token");
-    navigate("/login");
+    // navigate("/login");
   }
 
   const usersAnalysis = [
@@ -291,59 +290,49 @@ export default function Admin() {
         </div>
 
         <div className="right">
-          <span
-            style={{
-              marginRight: "15px",
-              padding: "6px 12px",
-              background: "#f1f5f9",
-              borderRadius: "6px",
-              fontWeight: "600",
-            }}
-          >
-            {selectedYear}
-          </span>
+          <span className="admin-year-badge">{selectedYear}</span>
 
           <button onClick={handleLogout} className="logout-btn">
             <i className="fa fa-sign-out"></i>
-            Logout
+            <span>Logout</span>
           </button>
         </div>
       </header>
 
       <aside className={`admin-sidebar ${sidebarShrinked ? "shrinked" : ""}`}>
         <ul>
-          <li className={isActive("/admin")}>
-            <Link to="/admin">
-              <i style={{ color: "#023E8A" }} className="fa fa-dashboard"></i>
-              <span style={{ color: "#023E8A" }}>Dashboard</span>
+          <li>
+            <Link className={isActive("/admin")} to="/admin">
+              <i className="fa fa-dashboard"></i>
+              <span>Dashboard</span>
             </Link>
           </li>
           <li>
-            <Link to="/admin_users">
+            <Link className={isActive("/admin_users")} to="/admin_users">
               <i className="fa fa-users"></i>
               <span>All Users</span>
             </Link>
           </li>
           <li>
-            <Link to="/admin_sellers">
+            <Link className={isActive("/admin_sellers")} to="/admin_sellers">
               <i className="fa fa-user-secret"></i>
               <span>All Sellers</span>
             </Link>
           </li>
           <li>
-            <Link to="/admin_auctions">
+            <Link className={isActive("/admin_auctions")} to="/admin_auctions">
               <i className="fa fa-gavel"></i>
               <span>All Auctions</span>
             </Link>
           </li>
           <li>
-            <Link to="/admin_payments">
+            <Link className={isActive("/admin_payments")} to="/admin_payments">
               <i className="fa fa-credit-card"></i>
               <span>Payment Logs</span>
             </Link>
           </li>
           <li>
-            <Link to="/admin_delivery">
+            <Link className={isActive("/admin_delivery")} to="/admin_delivery">
               <i className="fa fa-truck"></i>
               <span>Admin Delivery</span>
             </Link>
@@ -358,13 +347,16 @@ export default function Admin() {
             </Link>
           </li>
           <li>
-            <Link to="/admin_reports">
+            <Link className={isActive("/admin_reports")} to="/admin_reports">
               <i className="fa-solid fa-clipboard-list"></i>
               <span>Reports</span>
             </Link>
           </li>
           <li>
-            <Link to="/admin_announcements">
+            <Link
+              className={isActive("/admin_announcements")}
+              to="/admin_announcements"
+            >
               <i className="fa fa-bullhorn"></i>
               <span>Announcements</span>
             </Link>
@@ -374,63 +366,102 @@ export default function Admin() {
 
       <main className={`admin-content ${sidebarShrinked ? "active" : ""}`}>
         <div className="dashboard-wrapper">
-          <h2 className="page-title">Admin Dashboard Analysis ({selectedYear})</h2>
+          <h2 className="page-title">
+            Admin Dashboard Analysis ({selectedYear})
+          </h2>
 
           {loading ? (
-            <Skelaton />
+            <AdminDashboardSkeleton />
           ) : (
             <>
               <section className="dashboard-section">
                 <h4>Users Analytics</h4>
+
                 <div className="grid" style={{ marginBottom: "30px" }}>
                   <Card title="Total Users" value={users.total} icon="users" />
-                  <Card title="Active Users" value={users.active} icon="user-check" />
-                  <Card title="Blocked Users" value={users.blocked} icon="user-times" />
+                  <Card
+                    title="Active Users"
+                    value={users.active}
+                    icon="user-check"
+                  />
+                  <Card
+                    title="Blocked Users"
+                    value={users.blocked}
+                    icon="user-times"
+                  />
                 </div>
 
-                <div style={{ display: "flex", gap: "40px", flexWrap: "wrap" }}>
-                  <SimpleBarChart
-                    data={usersAnalysis}
-                    dataKey="value"
-                    title="Users Overview"
-                  />
-                  <CircleChart
-                    data={usersAnalysis}
-                    colors={["#2d6a4f", "#e63946"]}
-                  />
+                <div className="admin-analysis-row">
+                  <div className="admin-chart-scroll">
+                    <SimpleBarChart
+                      data={usersAnalysis}
+                      dataKey="value"
+                      title="Users Overview"
+                    />
+                  </div>
+
+                  <div className="admin-pie-scroll">
+                    <CircleChart
+                      data={usersAnalysis}
+                      colors={["#2d6a4f", "#e63946"]}
+                    />
+                  </div>
                 </div>
               </section>
 
               <section className="dashboard-section">
                 <h4>Sellers Analytics</h4>
+
                 <div className="grid" style={{ marginBottom: "30px" }}>
-                  <Card title="Total Sellers" value={sellers.total} icon="store" />
+                  <Card
+                    title="Total Sellers"
+                    value={sellers.total}
+                    icon="store"
+                  />
                   <Card
                     title="Verified Sellers"
                     value={sellers.verified}
                     icon="check-circle"
                   />
-                  <Card title="Pending Sellers" value={sellers.pending} icon="clock" />
+                  <Card
+                    title="Pending Sellers"
+                    value={sellers.pending}
+                    icon="clock"
+                  />
                 </div>
 
-                <div style={{ display: "flex", gap: "40px", flexWrap: "wrap" }}>
-                  <SimpleBarChart
-                    data={sellersAnalysis}
-                    dataKey="value"
-                    title="Sellers Overview"
-                  />
-                  <CircleChart
-                    data={sellersAnalysis}
-                    colors={["#2d6a4f", "#ffb703"]}
-                  />
+                <div className="admin-analysis-row">
+                  <div className="admin-chart-scroll">
+                    <SimpleBarChart
+                      data={sellersAnalysis}
+                      dataKey="value"
+                      title="Sellers Overview"
+                    />
+                  </div>
+
+                  <div className="admin-pie-scroll">
+                    <CircleChart
+                      data={sellersAnalysis}
+                      colors={["#2d6a4f", "#ffb703"]}
+                    />
+                  </div>
                 </div>
               </section>
 
               <section className="dashboard-section">
                 <h4>Auctions Analytics</h4>
+
                 <div className="grid" style={{ marginBottom: "30px" }}>
-                  <Card title="Total Auctions" value={auctions.total} icon="gavel" />
-                  <Card title="Active Auctions" value={auctions.active} icon="play" />
+                  <Card
+                    title="Total Auctions"
+                    value={auctions.total}
+                    icon="gavel"
+                  />
+                  <Card
+                    title="Active Auctions"
+                    value={auctions.active}
+                    icon="play"
+                  />
                   <Card
                     title="Expired Auctions"
                     value={auctions.expired}
@@ -443,41 +474,56 @@ export default function Admin() {
                   />
                 </div>
 
-                <div style={{ display: "flex", gap: "40px", flexWrap: "wrap" }}>
-                  <SimpleBarChart
-                    data={auctionsAnalysis}
-                    dataKey="value"
-                    title="Auctions Overview"
-                  />
-                  <CircleChart
-                    data={auctionsAnalysis}
-                    colors={["#2196F3", "#9C27B0", "#FF9800"]}
-                  />
+                <div className="admin-analysis-row">
+                  <div className="admin-chart-scroll">
+                    <SimpleBarChart
+                      data={auctionsAnalysis}
+                      dataKey="value"
+                      title="Auctions Overview"
+                    />
+                  </div>
+
+                  <div className="admin-pie-scroll">
+                    <CircleChart
+                      data={auctionsAnalysis}
+                      colors={["#2196F3", "#9C27B0", "#FF9800"]}
+                    />
+                  </div>
                 </div>
               </section>
 
               <section className="dashboard-section">
                 <h4>Payments Analytics</h4>
+
                 <div className="grid" style={{ marginBottom: "30px" }}>
                   <Card
                     title="Total Transactions"
                     value={payments.total}
                     icon="credit-card"
                   />
-                  <Card title="Successful" value={payments.success} icon="check" />
+                  <Card
+                    title="Successful"
+                    value={payments.success}
+                    icon="check"
+                  />
                   <Card title="Failed" value={payments.failed} icon="times" />
                 </div>
 
-                <div style={{ display: "flex", gap: "40px", flexWrap: "wrap" }}>
-                  <SimpleBarChart
-                    data={paymentsAnalysis}
-                    dataKey="value"
-                    title="Payments Overview"
-                  />
-                  <CircleChart
-                    data={paymentsAnalysis}
-                    colors={["#2d6a4f", "#e63946"]}
-                  />
+                <div className="admin-analysis-row">
+                  <div className="admin-chart-scroll">
+                    <SimpleBarChart
+                      data={paymentsAnalysis}
+                      dataKey="value"
+                      title="Payments Overview"
+                    />
+                  </div>
+
+                  <div className="admin-pie-scroll">
+                    <CircleChart
+                      data={paymentsAnalysis}
+                      colors={["#2d6a4f", "#e63946"]}
+                    />
+                  </div>
                 </div>
               </section>
             </>
@@ -488,10 +534,62 @@ export default function Admin() {
   );
 }
 
+function AdminDashboardSkeleton() {
+  return (
+    <>
+      {[1, 2, 3, 4].map((section) => (
+        <section className="dashboard-section admin-skeleton-section" key={section}>
+          <SkeletonBlock width="190px" height={22} radius={7} />
+
+          <div className="grid" style={{ marginBottom: "30px", marginTop: "18px" }}>
+            {[1, 2, 3].map((card) => (
+              <div className="dashboard-card" key={card}>
+                <SkeletonBlock width={44} height={44} radius={12} />
+
+                <div style={{ width: "100%" }}>
+                  <SkeletonBlock width="70%" height={14} radius={7} />
+                  <div style={{ height: 12 }} />
+                  <SkeletonBlock width="45%" height={26} radius={7} />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="admin-analysis-row">
+            <div className="admin-chart-scroll admin-skeleton-chart-box">
+              <SkeletonBlock width="650px" height={250} radius={12} />
+            </div>
+
+            <div className="admin-pie-scroll admin-skeleton-pie-box">
+              <SkeletonBlock width={180} height={180} radius="50%" />
+            </div>
+          </div>
+        </section>
+      ))}
+    </>
+  );
+}
+
+function SkeletonBlock({ width = "100%", height = 16, radius = 8 }) {
+  return (
+    <span
+      className="admin-skeleton-block"
+      style={{
+        width,
+        height,
+        borderRadius: radius,
+      }}
+    />
+  );
+}
+
 function buildFullUrl(baseURL, url) {
   if (!baseURL) return url;
   if (/^https?:\/\//i.test(url)) return url;
-  return `${String(baseURL).replace(/\/+$/, "")}/${String(url).replace(/^\/+/, "")}`;
+  return `${String(baseURL).replace(/\/+$/, "")}/${String(url).replace(
+    /^\/+/,
+    ""
+  )}`;
 }
 
 function extractNumber(data) {

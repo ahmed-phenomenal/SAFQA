@@ -15,6 +15,35 @@ const AUTH_KEYS = [
   "authLoginHintAccountType",
 ];
 
+const PUBLIC_FRONTEND_PATHS = [
+  "/admin",
+  "/admin_users",
+  "/admin_sellers",
+  "/admin_announcements",
+  "/admin_reports",
+  "/admin_auctions",
+  "/admin_payments",
+  "/admin_delivery",
+  "/admin_track_chats",
+  "/login",
+  "/sign-up",
+  "/forget",
+  "/code",
+  "/reset-password",
+  "/confirm_login",
+  "/delivery",
+];
+
+const isPublicFrontendPath = () => {
+  if (typeof window === "undefined") return false;
+
+  const path = window.location.pathname;
+
+  return PUBLIC_FRONTEND_PATHS.some((publicPath) => {
+    return path === publicPath || path.startsWith(`${publicPath}/`);
+  });
+};
+
 const readStorage = (key) => {
   if (typeof window === "undefined") return null;
 
@@ -260,6 +289,15 @@ export const clearAuthAndRedirectToLogin = () => {
 
   if (typeof window === "undefined") return;
 
+  /*
+    Important:
+    Admin pages are PUBLIC in your App.jsx.
+    So axios must NOT force redirect to /login when admin APIs return 401.
+  */
+  if (isPublicFrontendPath()) {
+    return;
+  }
+
   const currentPath =
     window.location.pathname + window.location.search + window.location.hash;
 
@@ -275,6 +313,9 @@ const normalizeRole = (value) => {
   if (role === "seller") return "seller";
   if (role === "admin") return "admin";
   if (role === "user") return "user";
+  if (role === "buyer") return "user";
+  if (role === "customer") return "user";
+  if (role === "administrator") return "admin";
   return "";
 };
 
@@ -282,6 +323,7 @@ const normalizeAccountType = (value) => {
   const accountType = String(value || "").trim().toLowerCase();
   if (accountType === "seller") return "seller";
   if (accountType === "buyer") return "buyer";
+  if (accountType === "user") return "buyer";
   return "";
 };
 
@@ -455,14 +497,18 @@ export const refreshAccessToken = async () => {
 
     for (const attempt of attempts) {
       try {
-        const res = await refreshClient.post("/Auth/refresh-token", attempt.data, {
-          headers: {
-            ...(attempt.headers || {}),
-            "x-api-key": "abc123xyhgfhjgkiho3544351z",
-            DeviceId: deviceId,
-            Accept: "application/json",
-          },
-        });
+        const res = await refreshClient.post(
+          "/Auth/refresh-token",
+          attempt.data,
+          {
+            headers: {
+              ...(attempt.headers || {}),
+              "x-api-key": "abc123xyhgfhjgkiho3544351z",
+              DeviceId: deviceId,
+              Accept: "application/json",
+            },
+          }
+        );
 
         const saved = persistAuthTokensFromResponse(res.data, {
           tokenKey: getCurrentRoleTokenKey(),
@@ -519,6 +565,7 @@ api.interceptors.request.use((config) => {
   const url = String(config.url || "").toLowerCase();
   const token = getAccessTokenForRoute(url);
   const deviceId = ensureDeviceId();
+
   const isFormData =
     typeof FormData !== "undefined" && config.data instanceof FormData;
 
@@ -549,8 +596,16 @@ api.interceptors.response.use(
     const status = Number(error?.response?.status || 0);
     const requestUrl = String(originalRequest.url || "").toLowerCase();
 
+    /*
+      Important:
+      If we are on admin public pages, never redirect to login because of API 401.
+      This lets /admin behave like /login and /sign-up: public frontend pages.
+    */
+    const shouldSkipLoginRedirect = isPublicFrontendPath();
+
     if (
       status === 401 &&
+      !shouldSkipLoginRedirect &&
       !originalRequest._retry &&
       !isPublicAuthRoute(requestUrl) &&
       !isRefreshTokenRoute(requestUrl) &&
@@ -573,7 +628,11 @@ api.interceptors.response.use(
       }
     }
 
-    if (status === 401 && !isPublicAuthRoute(requestUrl)) {
+    if (
+      status === 401 &&
+      !shouldSkipLoginRedirect &&
+      !isPublicAuthRoute(requestUrl)
+    ) {
       clearAuthAndRedirectToLogin();
     }
 

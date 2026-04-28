@@ -1,4 +1,4 @@
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useState, useEffect, useMemo } from "react";
 
 import {
@@ -12,6 +12,7 @@ import {
   PieChart,
   Pie,
   Cell,
+  ResponsiveContainer,
 } from "recharts";
 
 import icon from "../../../assets/Person at the Center of Circles.png";
@@ -56,6 +57,7 @@ function SkeletonBlock({ width = "100%", height = 16, radius = 8 }) {
         display: "block",
         width,
         height,
+        maxWidth: "100%",
         borderRadius: radius,
         background:
           "linear-gradient(90deg, #eceff3 25%, #f7f9fb 37%, #eceff3 63%)",
@@ -87,50 +89,13 @@ function StatsSkeleton() {
 
 function ChartsSkeleton() {
   return (
-    <div
-      style={{
-        display: "flex",
-        gap: "40px",
-        flexWrap: "wrap",
-        marginTop: "20px",
-      }}
-    >
-      <div
-        style={{
-          width: 650,
-          height: 260,
-          border: "1px solid #eef2f7",
-          borderRadius: 12,
-          padding: 18,
-          background: "#fff",
-        }}
-      >
-        <SkeletonBlock width="30%" height={16} />
-
-        <div style={{ marginTop: 24, display: "grid", gap: 16 }}>
-          <SkeletonBlock width="95%" height={18} />
-          <SkeletonBlock width="86%" height={18} />
-          <SkeletonBlock width="92%" height={18} />
-          <SkeletonBlock width="78%" height={18} />
-          <SkeletonBlock width="88%" height={18} />
-          <SkeletonBlock width="72%" height={18} />
-        </div>
+    <div className="admin-analysis-row">
+      <div className="admin-chart-box">
+        <SkeletonBlock width="100%" height={260} radius={16} />
       </div>
 
-      <div
-        style={{
-          width: 220,
-          height: 220,
-          borderRadius: "50%",
-          padding: 30,
-          background: "#fff",
-          border: "1px solid #eef2f7",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <SkeletonBlock width={150} height={150} radius="50%" />
+      <div className="admin-pie-box">
+        <SkeletonBlock width={180} height={180} radius="50%" />
       </div>
     </div>
   );
@@ -141,19 +106,23 @@ function TableSkeleton({ rows = 10 }) {
     <>
       {Array.from({ length: rows }).map((_, index) => (
         <tr key={index}>
-          <td>
+          <td data-label="#">
             <SkeletonBlock width={28} height={14} />
           </td>
-          <td>
+
+          <td data-label="Name">
             <SkeletonBlock width="75%" height={14} />
           </td>
-          <td>
+
+          <td data-label="Email">
             <SkeletonBlock width="90%" height={14} />
           </td>
-          <td>
+
+          <td data-label="Status">
             <SkeletonBlock width={76} height={24} radius={999} />
           </td>
-          <td>
+
+          <td data-label="Action">
             <SkeletonBlock width={92} height={34} radius={8} />
           </td>
         </tr>
@@ -190,6 +159,7 @@ export default function Users() {
   const [page, setPage] = useState(1);
   const pageSize = 10;
   const [totalPages, setTotalPages] = useState(1);
+
   const [loading, setLoading] = useState(true);
   const [tableLoading, setTableLoading] = useState(false);
   const [error, setError] = useState("");
@@ -202,9 +172,7 @@ export default function Users() {
 
   const toggleSidebar = () => setSidebarShrinked((prev) => !prev);
 
-  const navigate = useNavigate();
   const location = useLocation();
-
   const isActive = (path) => (location.pathname === path ? "active" : "");
 
   function handleLogout() {
@@ -212,7 +180,6 @@ export default function Users() {
     localStorage.removeItem("adminToken");
     sessionStorage.removeItem("userToken");
     sessionStorage.removeItem("adminToken");
-    navigate("/login");
   }
 
   const loadStats = async () => {
@@ -360,7 +327,8 @@ export default function Users() {
         </div>
 
         <button onClick={handleLogout} className="logout-btn">
-          <i className="fa fa-sign-out"></i> Logout
+          <i className="fa fa-sign-out"></i>
+          <span>Logout</span>
         </button>
       </header>
 
@@ -409,7 +377,10 @@ export default function Users() {
           </li>
 
           <li>
-            <Link className={isActive("/admin_track_chats")} to="/admin_track_chats">
+            <Link
+              className={isActive("/admin_track_chats")}
+              to="/admin_track_chats"
+            >
               <i className="fa fa-comments"></i>
               <span>Track Chats</span>
             </Link>
@@ -448,13 +419,11 @@ export default function Users() {
             <>
               <div className="grid">
                 <Card title="Total Users" value={stats.total} icon="users" />
-
                 <Card
                   title="Active Users"
                   value={stats.active}
                   icon="user-check"
                 />
-
                 <Card
                   title="Blocked Users"
                   value={stats.blocked}
@@ -462,28 +431,17 @@ export default function Users() {
                 />
               </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: "40px",
-                  flexWrap: "wrap",
-                  marginTop: "20px",
-                }}
-              >
-                <LineChart width={650} height={260} data={usersData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="active" stroke="#2d6a4f" />
-                  <Line type="monotone" dataKey="blocked" stroke="#e63946" />
-                </LineChart>
+              <div className="admin-analysis-row">
+                <div className="admin-chart-box">
+                  <LineChartResponsive data={usersData} />
+                </div>
 
-                <CircleChart
-                  data={usersAnalysis}
-                  colors={["#2d6a4f", "#e63946"]}
-                />
+                <div className="admin-pie-box">
+                  <CircleChart
+                    data={usersAnalysis}
+                    colors={["#2d6a4f", "#e63946"]}
+                  />
+                </div>
               </div>
             </>
           )}
@@ -511,25 +469,29 @@ export default function Users() {
               ) : (
                 users.map((user, i) => (
                   <tr key={user.id || i}>
-                    <td>{(page - 1) * pageSize + i + 1}</td>
-                    <td>{user.name}</td>
-                    <td>{user.email}</td>
-                    <td>
+                    <td data-label="#">{(page - 1) * pageSize + i + 1}</td>
+
+                    <td data-label="Name">{user.name}</td>
+
+                    <td data-label="Email">{user.email}</td>
+
+                    <td data-label="Status">
                       <span className={`status ${user.status}`}>
                         {user.status}
                       </span>
                     </td>
-                    <td>
+
+                    <td data-label="Action">
                       {user.status === "active" ? (
                         <button
-                          className="action-btn suspend"
+                          className="action-btn suspend compact"
                           onClick={() => openConfirm(user, "suspend")}
                         >
                           Suspend
                         </button>
                       ) : (
                         <button
-                          className="action-btn activate"
+                          className="action-btn activate compact"
                           onClick={() => openConfirm(user, "restore")}
                         >
                           Restore
@@ -542,17 +504,9 @@ export default function Users() {
             </tbody>
           </table>
 
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              gap: 12,
-              marginTop: 16,
-            }}
-          >
+          <div className="admin-pagination">
             <button
-              className="action-btn view"
+              className="action-btn view compact"
               disabled={page <= 1 || tableLoading || loading}
               onClick={() => loadUsers(page - 1)}
             >
@@ -564,7 +518,7 @@ export default function Users() {
             </strong>
 
             <button
-              className="action-btn view"
+              className="action-btn view compact"
               disabled={page >= totalPages || tableLoading || loading}
               onClick={() => loadUsers(page + 1)}
             >
@@ -621,30 +575,71 @@ function Card({ title, value, icon }) {
   );
 }
 
+function LineChartResponsive({ data }) {
+  return (
+    <ResponsiveContainer width="100%" height={260}>
+      <LineChart
+        data={data}
+        margin={{ top: 14, right: 18, left: -14, bottom: 8 }}
+      >
+        <CartesianGrid strokeDasharray="3 3" />
+        <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+        <YAxis tick={{ fontSize: 12 }} />
+        <Tooltip />
+        <Legend
+          iconSize={9}
+          wrapperStyle={{
+            fontSize: 13,
+            paddingTop: 8,
+          }}
+        />
+        <Line
+          type="monotone"
+          dataKey="active"
+          stroke="#2d6a4f"
+          strokeWidth={2}
+          dot={{ r: 3, strokeWidth: 1 }}
+          activeDot={{ r: 5 }}
+        />
+        <Line
+          type="monotone"
+          dataKey="blocked"
+          stroke="#e63946"
+          strokeWidth={2}
+          dot={{ r: 3, strokeWidth: 1 }}
+          activeDot={{ r: 5 }}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
 function CircleChart({ data, colors }) {
   const total = data.reduce((sum, item) => sum + Number(item.value || 0), 0);
 
   return (
-    <PieChart width={220} height={220}>
-      <Pie
-        data={data}
-        cx="50%"
-        cy="50%"
-        innerRadius={65}
-        outerRadius={95}
-        paddingAngle={2}
-        dataKey="value"
-      >
-        {data.map((_, i) => (
-          <Cell key={i} fill={colors[i]} />
-        ))}
-      </Pie>
+    <ResponsiveContainer width="100%" height={240}>
+      <PieChart>
+        <Pie
+          data={data}
+          cx="50%"
+          cy="50%"
+          innerRadius="46%"
+          outerRadius="72%"
+          paddingAngle={2}
+          dataKey="value"
+        >
+          {data.map((_, i) => (
+            <Cell key={i} fill={colors[i]} />
+          ))}
+        </Pie>
 
-      <Tooltip
-        formatter={(v) =>
-          `${v} (${total ? ((v / total) * 100).toFixed(1) : 0}%)`
-        }
-      />
-    </PieChart>
+        <Tooltip
+          formatter={(v) =>
+            `${v} (${total ? ((v / total) * 100).toFixed(1) : 0}%)`
+          }
+        />
+      </PieChart>
+    </ResponsiveContainer>
   );
 }

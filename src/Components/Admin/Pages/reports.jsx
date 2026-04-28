@@ -11,17 +11,16 @@ import {
   CartesianGrid,
   Legend,
   Cell,
+  ResponsiveContainer,
 } from "recharts";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import icon from "../../../assets/Person at the Center of Circles.png";
-import "../admin.css"
-
+import "../admin.css";
 
 export default function Reports() {
-
   /* ================= DATE SYSTEM ================= */
 
   const today = new Date();
@@ -31,18 +30,21 @@ export default function Reports() {
     today.toISOString().split("T")[0]
   );
 
-useEffect(() => {
-            document.title = `Admin | Reports ${selectedDate}`;
-          }, [selectedDate]);
-        
-          // favicon
-          const [favicon, setFavicon] = useState(icon);
-          useEffect(() => {
-            const link = document.querySelector("link[rel~='icon']") || document.createElement("link");
-            link.rel = "icon";
-            link.href = favicon;
-            document.head.appendChild(link);
-          }, [favicon]);
+  useEffect(() => {
+    document.title = `Admin | Reports ${selectedDate}`;
+  }, [selectedDate]);
+
+  const [favicon] = useState(icon);
+
+  useEffect(() => {
+    const link =
+      document.querySelector("link[rel~='icon']") ||
+      document.createElement("link");
+
+    link.rel = "icon";
+    link.href = favicon;
+    document.head.appendChild(link);
+  }, [favicon]);
 
   /* ================= SIDEBAR ================= */
 
@@ -53,7 +55,7 @@ useEffect(() => {
 
   const handleLogout = () => {
     localStorage.removeItem("userToken");
-    navigate("/login");
+    // navigate("/login");
   };
 
   /* ================= DAILY DATA ================= */
@@ -199,8 +201,7 @@ useEffect(() => {
 
     saveAs(
       new Blob([excelBuffer], {
-        type:
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       }),
       `Safqa_Report_${selectedDate}.xlsx`
     );
@@ -208,7 +209,6 @@ useEffect(() => {
 
   return (
     <div className="admin-layout">
-
       <header className="admin-navbar">
         <div className="left">
           <button className="toggle-btn" onClick={toggleSidebar}>
@@ -228,29 +228,75 @@ useEffect(() => {
 
       <aside className={`admin-sidebar ${sidebarShrinked ? "shrinked" : ""}`}>
         <ul>
-          <li><Link to="/admin"><i className="fa fa-dashboard"></i><span>Dashboard</span></Link></li>
-          <li><Link to="/admin_users"><i className="fa fa-users"></i><span>All Users</span></Link></li>
-          <li><Link to="/admin_sellers"><i className="fa fa-user-secret"></i><span>All Sellers</span></Link></li>
-          <li><Link to="/admin_auctions"><i className="fa fa-gavel"></i><span>All Auctions</span></Link></li>
-          <li><Link to="/admin_payments"><i className="fa fa-credit-card"></i><span>Payment Logs</span></Link></li>
-          <li><Link to="/admin_delivery"><i className="fa fa-truck"></i><span>Admin Delivery</span></Link></li>
           <li>
-            <Link to="/admin_track_chats">
-            <i className="fa fa-comments"></i>
-            <span>Track Chats</span>
+            <Link to="/admin">
+              <i className="fa fa-dashboard"></i>
+              <span>Dashboard</span>
             </Link>
           </li>
-          <li><Link to="/admin_reports"><i style={{color:"#023E8A"}} className="fa fa-file-text"></i><span style={{color:"#023E8A"}}>Reports</span></Link></li>
-          <li><Link to="/admin_announcements"><i className="fa fa-bullhorn"></i><span>Announcements</span></Link></li>
+
+          <li>
+            <Link to="/admin_users">
+              <i className="fa fa-users"></i>
+              <span>All Users</span>
+            </Link>
+          </li>
+
+          <li>
+            <Link to="/admin_sellers">
+              <i className="fa fa-user-secret"></i>
+              <span>All Sellers</span>
+            </Link>
+          </li>
+
+          <li>
+            <Link to="/admin_auctions">
+              <i className="fa fa-gavel"></i>
+              <span>All Auctions</span>
+            </Link>
+          </li>
+
+          <li>
+            <Link to="/admin_payments">
+              <i className="fa fa-credit-card"></i>
+              <span>Payment Logs</span>
+            </Link>
+          </li>
+
+          <li>
+            <Link to="/admin_delivery">
+              <i className="fa fa-truck"></i>
+              <span>Admin Delivery</span>
+            </Link>
+          </li>
+
+          <li>
+            <Link to="/admin_track_chats">
+              <i className="fa fa-comments"></i>
+              <span>Track Chats</span>
+            </Link>
+          </li>
+
+          <li>
+            <Link to="/admin_reports">
+              <i style={{ color: "#023E8A" }} className="fa fa-file-text"></i>
+              <span style={{ color: "#023E8A" }}>Reports</span>
+            </Link>
+          </li>
+
+          <li>
+            <Link to="/admin_announcements">
+              <i className="fa fa-bullhorn"></i>
+              <span>Announcements</span>
+            </Link>
+          </li>
         </ul>
       </aside>
 
       <main className={`admin-content ${sidebarShrinked ? "active" : ""}`}>
-
         <h2 className="page-title">System Reports & Analytics</h2>
 
-        {/* DATE */}
-        <div className="mb-3">
+        <div className="report-controls mb-3">
           <label className="me-2">Select Day:</label>
           <input
             type="date"
@@ -261,7 +307,6 @@ useEffect(() => {
           />
         </div>
 
-        {/* EXPORT */}
         <div className="export-actions my-2">
           <button className="btn success mx-2" onClick={exportExcel}>
             <i className="fa fa-file-excel"></i> Export Excel
@@ -272,96 +317,135 @@ useEffect(() => {
           </button>
         </div>
 
-        {/* USER ACTIVITY */}
         <section className="dashboard-section">
           <h4>User Activity</h4>
-          <BarChart width={900} height={260} data={dailyData.userActivity}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Tooltip />
-            <Bar dataKey="value" fill="#023E8A" />
-          </BarChart>
+
+          <div className="report-chart-card">
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart
+                data={dailyData.userActivity}
+                margin={{ top: 10, right: 20, left: 0, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="value" fill="#023E8A" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </section>
 
-        {/* SELLER ACTIVITY */}
         <section className="dashboard-section">
           <h4>Seller Activity</h4>
-          <BarChart width={900} height={260} data={dailyData.sellerActivity}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Tooltip />
-            <Bar dataKey="value" fill="#2d6a4f" />
-          </BarChart>
+
+          <div className="report-chart-card">
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart
+                data={dailyData.sellerActivity}
+                margin={{ top: 10, right: 20, left: 0, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="value" fill="#2d6a4f" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </section>
 
-        {/* REVENUE */}
         <section className="dashboard-section">
           <h4>Revenue by Category</h4>
-          <PieChart width={420} height={320}>
-            <Pie
-              data={dailyData.revenueByCategory}
-              dataKey="value"
-              cx="50%"
-              cy="50%"
-              outerRadius={120}
-            >
-              {dailyData.revenueByCategory.map((_, i) => (
-                <Cell key={i} fill={["#023E8A","#2d6a4f","#ffb703","#e63946","#6c757d"][i]} />
-              ))}
-            </Pie>
-            <Tooltip />
-            <Legend />
-          </PieChart>
+
+          <div className="report-revenue-card">
+            <ResponsiveContainer width="100%" height={340}>
+              <PieChart>
+                <Pie
+                  data={dailyData.revenueByCategory}
+                  dataKey="value"
+                  cx="50%"
+                  cy="44%"
+                  outerRadius={115}
+                >
+                  {dailyData.revenueByCategory.map((_, i) => (
+                    <Cell
+                      key={i}
+                      fill={
+                        ["#023E8A", "#2d6a4f", "#ffb703", "#e63946", "#6c757d"][
+                          i
+                        ]
+                      }
+                    />
+                  ))}
+                </Pie>
+
+                <Tooltip />
+                <Legend
+                  verticalAlign="bottom"
+                  align="center"
+                  wrapperStyle={{
+                    width: "100%",
+                    left: 0,
+                    right: 0,
+                    textAlign: "center",
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
         </section>
 
-        {/* PROBLEMS */}
         <section className="dashboard-section">
           <h4>User Problems</h4>
-          <table className="table table-striped">
-            <thead>
-              <tr>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Problem</th>
-                <th>Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dailyData.problems.map((problem) => (
-                <tr key={problem.id}>
-                  <td>{problem.email}</td>
-                  <td>{problem.role}</td>
-                  <td>{problem.issue}</td>
-                  <td>{problem.status}</td>
-                  <td>
-                    <button
-                      className="btn btn-sm btn-primary"
-                      onClick={() => setSelectedProblem(problem)}
-                      disabled={problem.status === "resolved"}
-                    >
-                      Respond
-                    </button>
-                  </td>
+
+          <div className="report-table-card">
+            <table className="table table-striped report-table">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Problem</th>
+                  <th>Status</th>
+                  <th>Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody>
+                {dailyData.problems.map((problem) => (
+                  <tr key={problem.id}>
+                    <td>{problem.email}</td>
+                    <td>{problem.role}</td>
+                    <td>{problem.issue}</td>
+                    <td>{problem.status}</td>
+                    <td>
+                      <button
+                        className="btn btn-sm btn-primary"
+                        onClick={() => setSelectedProblem(problem)}
+                        disabled={problem.status === "resolved"}
+                      >
+                        Respond
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
 
-        {/* MODAL */}
         {selectedProblem && (
           <div className="modal-overlay">
             <div className="modal-box">
               <h4>Respond to {selectedProblem.email}</h4>
+
               <textarea
                 rows="5"
                 className="form-control mb-3"
                 value={responseText}
                 onChange={(e) => setResponseText(e.target.value)}
               />
+
               <div className="text-end">
                 <button
                   className="btn btn-secondary mx-2"
@@ -369,17 +453,14 @@ useEffect(() => {
                 >
                   Cancel
                 </button>
-                <button
-                  className="btn btn-success"
-                  onClick={handleSendResponse}
-                >
+
+                <button className="btn btn-success" onClick={handleSendResponse}>
                   Send
                 </button>
               </div>
             </div>
           </div>
         )}
-
       </main>
     </div>
   );

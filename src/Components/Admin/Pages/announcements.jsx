@@ -38,7 +38,7 @@ export default function Announcements() {
 
   function handleLogout() {
     localStorage.removeItem("userToken");
-    navigate("/login");
+    // navigate("/login");
   }
 
   /* ================= SEND ANNOUNCEMENT ================= */

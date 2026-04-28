@@ -233,8 +233,7 @@ export default function Signin() {
   const [loading, setLoading] = useState(false);
   const [googleReady, setGoogleReady] = useState(false);
   const [facebookReady, setFacebookReady] = useState(false);
-  const [generalError, setGeneralError] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const [generalError, setGeneralError] = useState(""); 
 
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [loginMethod, setLoginMethod] = useState("password");
@@ -917,12 +916,9 @@ export default function Signin() {
                 <div className="alert alert-danger">{formik.errors.email}</div>
               )}
 
-              <div
-                className="input-group mb-5"
-                style={{ position: "relative" }}
-              >
+              <div className="input-group mb-5" style={{ position: "relative" }}>
                 <input
-                  type={showPassword ? "text" : "password"}
+                  type="password"
                   name="password"
                   className="form-control p-2"
                   placeholder={t("passwordPlaceholder")}
@@ -932,21 +928,6 @@ export default function Signin() {
                   }}
                   onBlur={formik.handleBlur}
                   value={formik.values.password}
-                  style={{
-                    paddingRight: isArabic ? undefined : "45px",
-                    paddingLeft: isArabic ? "45px" : undefined,
-                  }}
-                />
-
-                <PasswordToggleButton
-                  showPassword={showPassword}
-                  onToggle={() => setShowPassword((prev) => !prev)}
-                  disabled={loading}
-                  labels={{
-                    hidePassword: t("hidePassword"),
-                    showPassword: t("showPassword"),
-                  }}
-                  isArabic={isArabic}
                 />
               </div>
 

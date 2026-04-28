@@ -5,6 +5,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import Splash from "./Components/Splash";
 import Layout from "./Components/Layout/Layout";
 import ProtectedRoute from "./Components/ProtectedRoute/ProtectedRoute";
+
 import Signin from "./Components/Sign-in/Sign-in";
 import Register from "./Components/Register/Register";
 import Forget from "./Components/ForgetPassword/Forget";
@@ -36,7 +37,7 @@ import Account_edit from "./Components/Home/Account_edit";
 import Tracking from "./Components/Home/Tracking";
 import Help_support from "./Components/Home/Help_support";
 
-/* ============ Seller ============ */
+/* Seller */
 import SellerStatistics from "./Components/Seller/SellerStatistics";
 import Seller from "./Components/Seller/Home/Seller";
 import SellerProfile from "./Components/Seller/Home/seller-profile";
@@ -58,7 +59,7 @@ import Seller_History from "./Components/Seller/Home/Seller_History";
 import Seller_account_edit from "./Components/Seller/Home/seller_account_edit";
 import ViewAuction from "./Components/Seller/Home/ViewAuction";
 
-/* ============ ADMIN ============ */
+/* Admin */
 import Admin from "./Components/Admin/Admin";
 import Users from "./Components/Admin/Pages/Users";
 import Sellers from "./Components/Admin/Pages/Sellers";
@@ -72,36 +73,43 @@ import TrackChatsAdmin from "./Components/Admin/Pages/TrackChatsAdmin";
 import Delivery from "./Delivery/Delivery";
 
 const router = createBrowserRouter([
-  { path: "/", element: <Splash /> },
+  {
+    path: "/",
+    element: <Splash />,
+  },
 
   {
     path: "/",
     element: <Layout />,
     children: [
-      {
-        element: <ProtectedRoute guestOnly={true} />,
-        children: [
-          { path: "login", element: <Signin /> },
-          { path: "sign-up", element: <Register /> },
-          { path: "confirm_login", element: <ConfirmLogin /> },
-          { path: "forget", element: <Forget /> },
-          { path: "code", element: <ResetCode /> },
-          { path: "reset-password", element: <ResetPassword /> },
-          { path: "delivery", element: <Delivery /> },
-          { path: "delivery/:accessKey", element: <Delivery /> },
+      /* Public auth pages */
+      { path: "login", element: <Signin /> },
+      { path: "sign-up", element: <Register /> },
+      { path: "confirm_login", element: <ConfirmLogin /> },
+      { path: "forget", element: <Forget /> },
+      { path: "code", element: <ResetCode /> },
+      { path: "reset-password", element: <ResetPassword /> },
 
-          { path: "admin", element: <Admin /> },
-          { path: "admin_users", element: <Users /> },
-          { path: "admin_sellers", element: <Sellers /> },
-          { path: "admin_announcements", element: <Announcements /> },
-          { path: "admin_reports", element: <Reports /> },
-          { path: "admin_auctions", element: <Auctions /> },
-          { path: "admin_payments", element: <Payments /> },
-          { path: "admin_delivery", element: <Admin_delivery /> },
-          { path: "admin_track_chats", element: <TrackChatsAdmin /> },
-        ],
-      },
+      /*
+        ADMIN ROUTES ARE PUBLIC.
+        They are treated like login/register.
+        No ProtectedRoute here.
+      */
+      { path: "admin", element: <Admin /> },
+      { path: "admin_users", element: <Users /> },
+      { path: "admin_sellers", element: <Sellers /> },
+      { path: "admin_announcements", element: <Announcements /> },
+      { path: "admin_reports", element: <Reports /> },
+      { path: "admin_auctions", element: <Auctions /> },
+      { path: "admin_payments", element: <Payments /> },
+      { path: "admin_delivery", element: <Admin_delivery /> },
+      { path: "admin_track_chats", element: <TrackChatsAdmin /> },
 
+      /* Public delivery pages */
+      { path: "delivery", element: <Delivery /> },
+      { path: "delivery/:accessKey", element: <Delivery /> },
+
+      /* Buyer/User protected routes */
       {
         element: <ProtectedRoute allowedRoles={["user"]} />,
         children: [
@@ -128,10 +136,10 @@ const router = createBrowserRouter([
           { path: "account-edit", element: <Account_edit /> },
           { path: "track-status", element: <Track_Status /> },
           { path: "help-&-support", element: <Help_support /> },
-          
         ],
       },
 
+      /* Seller protected routes */
       {
         element: <ProtectedRoute allowedRoles={["seller"]} />,
         children: [
@@ -158,25 +166,13 @@ const router = createBrowserRouter([
           { path: "seller-statistics", element: <SellerStatistics /> },
         ],
       },
-
-      {
-        element: <ProtectedRoute allowedRoles={["admin"]} />,
-        children: [
-          { path: "admin", element: <Admin /> },
-          { path: "admin_users", element: <Users /> },
-          { path: "admin_sellers", element: <Sellers /> },
-          { path: "admin_announcements", element: <Announcements /> },
-          { path: "admin_reports", element: <Reports /> },
-          { path: "admin_auctions", element: <Auctions /> },
-          { path: "admin_payments", element: <Payments /> },
-          { path: "admin_delivery", element: <Admin_delivery /> },
-          { path: "admin_track_chats", element: <TrackChatsAdmin /> },
-        ],
-      },
     ],
   },
 
-  { path: "*", element: <Error /> },
+  {
+    path: "*",
+    element: <Error />,
+  },
 ]);
 
 function App() {
@@ -185,6 +181,7 @@ function App() {
 
   useEffect(() => {
     const lang = localStorage.getItem("lang") || "en";
+
     i18n.changeLanguage(lang);
     document.documentElement.lang = lang;
     document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
@@ -199,6 +196,7 @@ function App() {
       "refreshToken",
       "role",
       "accountType",
+      "userRole",
       "sellerId",
       "currentUserEmail",
       "pendingEmail",
@@ -227,7 +225,33 @@ function App() {
     const logoutUser = () => {
       clearAuthStorage();
       localStorage.removeItem("lastActivityAt");
-      window.location.replace("/login");
+
+      const publicPaths = [
+        "/admin",
+        "/admin_users",
+        "/admin_sellers",
+        "/admin_announcements",
+        "/admin_reports",
+        "/admin_auctions",
+        "/admin_payments",
+        "/admin_delivery",
+        "/admin_track_chats",
+        "/login",
+        "/sign-up",
+        "/forget",
+        "/code",
+        "/reset-password",
+        "/confirm_login",
+        "/delivery",
+      ];
+
+      const isPublicPath = publicPaths.some((path) =>
+        window.location.pathname.startsWith(path)
+      );
+
+      if (!isPublicPath) {
+        window.location.replace("/login");
+      }
     };
 
     const startIdleTimer = () => {
@@ -244,6 +268,7 @@ function App() {
 
     const handleUserActivity = () => {
       if (!hasAnyAuth()) return;
+
       saveLastActivity();
       startIdleTimer();
     };

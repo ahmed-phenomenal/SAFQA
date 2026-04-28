@@ -104,7 +104,7 @@ export default function AdminDelivery() {
 
   function handleLogout() {
     localStorage.removeItem("userToken");
-    navigate("/login");
+    // navigate("/login");
   }
 
   /* ================= CARD ================= */

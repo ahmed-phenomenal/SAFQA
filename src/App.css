@@ -548,14 +548,36 @@ h1{
 
 
 /*Sign-in*/
-.sign-in{
+.sign-in {
   position: absolute;
   top: 100px;
   width: 100%;
+  padding-bottom: 45px;
 }
-.sign-in .alert{
+
+.sign-in .container {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding-left: 55px;
+  padding-right: 55px;
+}
+
+.sign-in .forms {
+  width: 100%;
+  margin: 0 auto;
+}
+
+.sign-in h1 {
+  text-align: center;
+  color: #023e8a;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.sign-in .alert {
   color: #dc3545;
 }
+
 /* Forget password */
 .sign-in .forgot-wrapper {
   display: flex;
@@ -572,7 +594,7 @@ h1{
 
 .sign-in .forgot-text:hover {
   text-decoration: underline;
-  color: #023E8A !important;
+  color: #023e8a !important;
 }
 
 .sign-in .button-wrapper {
@@ -582,7 +604,7 @@ h1{
 }
 
 .sign-in .login-btn {
-  background-color: #023E8A;
+  background-color: #023e8a;
   color: #fff;
   border: none;
   padding: 14px 60px;
@@ -591,6 +613,7 @@ h1{
   border-radius: 8px;
   cursor: pointer;
   transition: 0.3s ease;
+  min-width: 280px;
 }
 
 .sign-in .login-btn:hover {
@@ -601,6 +624,7 @@ h1{
   background-color: #9bb3d3;
   cursor: not-allowed;
 }
+
 .sign-in .signup-wrapper {
   margin-top: 15px;
   text-align: center;
@@ -612,13 +636,13 @@ h1{
   color: #555;
 }
 
-.signup-link {
-  color: #023E8A !important;
-  font-weight: 600;
+.sign-in .signup-link {
+  color: #023e8a !important;
+  font-weight: bold;
   text-decoration: none;
   font-size: 20px;
-  font-weight: bold;
 }
+
 .sign-in .or-divider {
   display: flex;
   align-items: center;
@@ -628,7 +652,7 @@ h1{
 
 .sign-in .or-divider::before,
 .sign-in .or-divider::after {
-  content: '';
+  content: "";
   flex: 1;
   height: 1px;
   background-color: black;
@@ -646,6 +670,7 @@ h1{
   flex-direction: column;
   gap: 12px;
   margin-top: 20px;
+  align-items: center;
 }
 
 .sign-in .social-box {
@@ -653,7 +678,8 @@ h1{
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 14px;
+
+  padding: 14px 18px;
   border-radius: 8px;
   cursor: pointer;
   font-size: 16px;
@@ -661,46 +687,230 @@ h1{
   transition: 0.3s ease;
   border: 1px solid #ddd;
   background-color: #fff;
-  width: 50%;
-    margin: 0 auto;
-}
+  color: #000;
 
+  width: 50%;
+  min-width: 420px;
+  max-width: 640px;
+  margin: 0 auto;
+  overflow: hidden;
+}
 
 .sign-in .social-logo {
   position: absolute;
-  left: 16px;
+  left: 22px;
   width: 30px;
   height: 30px;
   object-fit: contain;
 }
 
+.sign-in .social-box span {
+  display: block;
+  width: 100%;
+  text-align: center;
+  line-height: 1.25;
+  white-space: normal;
+}
+
 .sign-in .social-box.google {
   color: #000;
 }
+
 .sign-in .social-box:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
 }
+
+/* Laptop */
+@media (max-width: 1200px) {
+  .sign-in .container {
+    padding-left: 45px;
+    padding-right: 45px;
+  }
+
+  .sign-in .social-box {
+    width: 56%;
+    min-width: 390px;
+    max-width: 560px;
+  }
+}
+
+/* Tablet */
+@media (max-width: 767px) {
+  .sign-in {
+    top: 105px;
+  }
+
+  .sign-in .container {
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+
+  .sign-in h1 {
+    font-size: 34px;
+    margin-bottom: 18px;
+  }
+
+  .sign-in .form-control {
+    height: 52px;
+    font-size: 18px;
+  }
+
+  .sign-in .forgot-wrapper {
+    margin-top: 8px;
+    margin-bottom: 22px;
+  }
+
+  .sign-in .forgot-text {
+    font-size: 18px;
+  }
+
+  .sign-in .login-btn {
+    width: 280px;
+    min-width: 0;
+    padding: 14px 20px;
+    font-size: 20px;
+  }
+
+  .sign-in .signup-wrapper {
+    font-size: 20px;
+    margin-top: 22px;
+  }
+
+  .sign-in .signup-link {
+    font-size: 24px;
+  }
+
+  .sign-in .or-divider {
+    margin: 28px 0;
+  }
+
+  .sign-in .social-box {
+    width: 58%;
+    min-width: 300px;
+    max-width: 380px;
+    padding: 12px 16px;
+    font-size: 16px;
+  }
+
+  .sign-in .social-logo {
+    left: 18px;
+    width: 30px;
+    height: 30px;
+  }
+}
+
+/* Phones */
 @media (max-width: 650px) {
-  .social-login {
-    flex-direction: column;
+  .sign-in {
+    top: 100px;
   }
 
-  .social-box {
-    flex-direction: column;
-    text-align: center;
-    gap: 8px;
-    padding: 14px 12px;
+  .sign-in .container {
+    padding-left: 20px;
+    padding-right: 20px;
   }
 
-  .social-logo {
+  .sign-in h1 {
+    font-size: 32px;
+  }
+
+  .sign-in .social-login {
+    width: 100%;
+  }
+
+  .sign-in .social-box {
+    width: 100%;
+    min-width: 0;
+    max-width: 320px;
+    padding: 12px 14px;
+    font-size: 15px;
+  }
+
+  .sign-in .social-logo {
+    left: 18px;
     width: 28px;
     height: 28px;
   }
 
-  .social-box span {
-    font-size: 14px;
+  .sign-in .social-box span {
+    font-size: 15px;
     line-height: 1.2;
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+}
+
+/* Small phones */
+@media (max-width: 480px) {
+  .sign-in {
+    top: 95px;
+  }
+
+  .sign-in .container {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .sign-in h1 {
+    font-size: 30px;
+    margin-bottom: 16px;
+  }
+
+  .sign-in .form-control {
+    height: 50px;
+    font-size: 16px;
+  }
+
+  .sign-in .forgot-wrapper {
+    justify-content: flex-end;
+    margin: 6px 0 20px;
+  }
+
+  .sign-in .forgot-text {
+    font-size: 16px;
+  }
+
+  .sign-in .login-btn {
+    width: 260px;
+    padding: 13px 18px;
+    font-size: 18px;
+  }
+
+  .sign-in .signup-wrapper {
+    font-size: 18px;
+    line-height: 1.4;
+  }
+
+  .sign-in .signup-link {
+    font-size: 22px;
+  }
+
+  .sign-in .or-divider {
+    margin: 26px 0;
+  }
+
+  .sign-in .or-divider span {
+    font-size: 14px;
+  }
+
+  .sign-in .social-box {
+    width: 100%;
+    max-width: 280px;
+    padding: 11px 12px;
+    font-size: 14px;
+  }
+
+  .sign-in .social-logo {
+    left: 16px;
+    width: 27px;
+    height: 27px;
+  }
+
+  .sign-in .social-box span {
+    font-size: 14px;
+    padding-left: 24px;
+    padding-right: 10px;
   }
 }
 

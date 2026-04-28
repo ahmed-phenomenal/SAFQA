@@ -158,7 +158,7 @@ export default function Auctions() {
 
   function handleLogout() {
     localStorage.removeItem("userToken");
-    navigate("/login");
+    // navigate("/login");
   }
 
   const [confirmBox, setConfirmBox] = useState(false);

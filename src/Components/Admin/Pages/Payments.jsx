@@ -44,7 +44,7 @@ export default function Payments() {
 
   function handleLogout() {
     localStorage.removeItem("userToken");
-    navigate("/login");
+    // navigate("/login");
   }
 
   /* ================= FILTER ================= */

@@ -105,20 +105,15 @@ const SkeletonDashboard = () => (
         ))}
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          gap: "40px",
-          flexWrap: "wrap",
-          marginTop: "20px",
-        }}
-      >
-        <div style={{ width: 650, maxWidth: "100%" }}>
-          <SkeletonBlock width="100%" height={260} radius={16} />
+      <div className="admin-analysis-row" style={{ marginTop: "20px" }}>
+        <div className="admin-chart-scroll admin-skeleton-chart-box">
+          <div style={{ width: 650, maxWidth: "100%" }}>
+            <SkeletonBlock width="100%" height={260} radius={16} />
+          </div>
         </div>
 
-        <div style={{ width: 220 }}>
-          <SkeletonBlock width={220} height={220} radius="50%" />
+        <div className="admin-pie-scroll admin-skeleton-pie-box">
+          <SkeletonBlock width={180} height={180} radius="50%" />
         </div>
       </div>
     </section>
@@ -201,7 +196,7 @@ export default function Sellers() {
 
   function handleLogout() {
     localStorage.removeItem("userToken");
-    navigate("/login");
+    // navigate("/login");
   }
 
   const resolveSellerUserId = async (seller) => {
@@ -480,7 +475,10 @@ export default function Sellers() {
           </li>
 
           <li>
-            <Link className={isActive("/admin_track_chats")} to="/admin_track_chats">
+            <Link
+              className={isActive("/admin_track_chats")}
+              to="/admin_track_chats"
+            >
               <i className="fa fa-comments"></i>
               <span>Track Chats</span>
             </Link>
@@ -521,26 +519,32 @@ export default function Sellers() {
               />
             </div>
 
-            <div
-              style={{
-                display: "flex",
-                gap: "40px",
-                flexWrap: "wrap",
-                marginTop: "20px",
-              }}
-            >
-              <LineChart width={650} height={260} data={sellersData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="verified" stroke="#2d6a4f" />
-                <Line type="monotone" dataKey="pending" stroke="#ffb703" />
-              </LineChart>
+<div className="admin-analysis-row">
+  <div className="admin-chart-scroll seller-chart-scroll">
+    <LineChart width={650} height={260} data={sellersData}>
+      <CartesianGrid strokeDasharray="3 3" />
+      <XAxis dataKey="month" />
+      <YAxis />
+      <Tooltip />
+      <Legend
+        align="center"
+        verticalAlign="bottom"
+        wrapperStyle={{
+          width: "100%",
+          left: 0,
+          bottom: 0,
+          textAlign: "center",
+        }}
+      />
+      <Line type="monotone" dataKey="verified" stroke="#2d6a4f" />
+      <Line type="monotone" dataKey="pending" stroke="#ffb703" />
+    </LineChart>
+  </div>
 
-              <CircleChart data={sellersAnalysis} colors={["#2d6a4f", "#ffb703"]} />
-            </div>
+  <div className="admin-pie-scroll">
+    <CircleChart data={sellersAnalysis} colors={["#2d6a4f", "#ffb703"]} />
+  </div>
+</div>
           </section>
         )}
 
