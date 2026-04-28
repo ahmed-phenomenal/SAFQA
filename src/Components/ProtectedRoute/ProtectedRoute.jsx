@@ -2,23 +2,6 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import Error from "../Error/Error";
 import { getAuthState } from "../../API/authAccess";
 
-const buildLoginRedirect = (location, redirectTo) => {
-  const currentPath = `${location.pathname}${location.search || ""}${
-    location.hash || ""
-  }`;
-
-  const isSellerPath = location.pathname.toLowerCase().includes("seller");
-
-  const params = new URLSearchParams();
-  params.set("redirect", currentPath);
-
-  if (isSellerPath) {
-    params.set("accountType", "seller");
-  }
-
-  return `${redirectTo}?${params.toString()}`;
-};
-
 export default function ProtectedRoute({
   children,
   allowedRoles = [],
@@ -34,11 +17,10 @@ export default function ProtectedRoute({
       return children || <Outlet />;
     }
 
-    const params = new URLSearchParams(location.search);
-    const redirect = params.get("redirect");
+    const from = location.state?.from?.pathname;
 
-    if (redirect) {
-      return <Navigate to={redirect} replace />;
+    if (from) {
+      return <Navigate to={from} replace />;
     }
 
     if (role === "admin") return <Navigate to="/admin" replace />;
@@ -47,10 +29,20 @@ export default function ProtectedRoute({
   }
 
   if (!isAuthenticated) {
-    return <Navigate to={buildLoginRedirect(location, redirectTo)} replace />;
+    return (
+      <Navigate
+        to={redirectTo}
+        replace
+        state={{ from: location }}
+      />
+    );
   }
 
-  if (allowedRoles.length > 0 && !allowedRoles.includes(role) && role !== "admin") {
+  if (
+    allowedRoles.length > 0 &&
+    !allowedRoles.includes(role) &&
+    role !== "admin"
+  ) {
     return forbiddenAs404 ? <Error /> : <Navigate to="/login" replace />;
   }
 

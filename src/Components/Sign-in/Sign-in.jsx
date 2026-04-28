@@ -58,6 +58,7 @@ function PasswordToggleButton({
         transition: "color 0.3s ease, opacity 0.3s ease",
       }}
     >
+      {showPassword ? "🙈" : "👁️"}
     </button>
   );
 }
@@ -234,12 +235,15 @@ export default function Signin() {
   const [facebookReady, setFacebookReady] = useState(false);
   const [generalError, setGeneralError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [loginModalOpen, setLoginModalOpen] = useState(false);
+
+  const [accountModalOpen, setAccountModalOpen] = useState(false);
+  const [loginMethod, setLoginMethod] = useState("password");
 
   const googleBtnRef = useRef(null);
   const googleScriptLoadedRef = useRef(false);
   const googleInitializedRef = useRef(false);
   const facebookInitializedRef = useRef(false);
+  const pendingSocialAccountTypeRef = useRef("buyer");
 
   useEffect(() => {
     document.title = t("signInDocTitle");
@@ -263,6 +267,16 @@ export default function Signin() {
       sessionStorage.removeItem(key);
       localStorage.removeItem(key);
     });
+  };
+
+  const getRedirectAfterLogin = (finalRole) => {
+    const from = location.state?.from?.pathname;
+
+    if (from) {
+      return from;
+    }
+
+    return roleToRoute(finalRole);
   };
 
   const saveSessionAndRedirect = (
@@ -321,7 +335,7 @@ export default function Signin() {
       });
     }
 
-    navigate(roleToRoute(finalRole), { replace: true });
+    navigate(getRedirectAfterLogin(finalRole), { replace: true });
   };
 
   const validationScheme = Yup.object({
@@ -374,7 +388,8 @@ export default function Signin() {
       if (!ok && !token) {
         return {
           success: false,
-          message: extractMessage(root) || extractMessage(data) || t("loginFailed"),
+          message:
+            extractMessage(root) || extractMessage(data) || t("loginFailed"),
         };
       }
 
@@ -396,7 +411,7 @@ export default function Signin() {
     }
   };
 
-  async function handleLogin(values, forcedAccountType) {
+  async function handlePasswordLogin(values, forcedAccountType) {
     setGeneralError("");
     setLoading(true);
 
@@ -431,19 +446,21 @@ export default function Signin() {
       );
     } finally {
       setLoading(false);
-      setLoginModalOpen(false);
+      setAccountModalOpen(false);
     }
   }
 
   const formik = useFormik({
     initialValues: {
-      email: location?.state?.email || sessionStorage.getItem("pendingEmail") || "",
+      email:
+        location?.state?.email || sessionStorage.getItem("pendingEmail") || "",
       password: "",
     },
     validationSchema: validationScheme,
     onSubmit: () => {
       setGeneralError("");
-      setLoginModalOpen(true);
+      setLoginMethod("password");
+      setAccountModalOpen(true);
     },
     validateOnMount: true,
     validateOnChange: true,
@@ -451,16 +468,29 @@ export default function Signin() {
     enableReinitialize: false,
   });
 
-  async function handleGoogleBackend(idToken) {
+  async function handleGoogleBackend(idToken, selectedAccountType) {
     setGeneralError("");
     setLoading(true);
 
     try {
-      const data = await googleAuth({ idToken });
+      const actualAccountType = normalizeAccountType(selectedAccountType);
+      const backendRole = accountTypeToBackendRole(actualAccountType);
+
+      const data = await googleAuth(
+        { idToken },
+        {
+          params: { role: backendRole },
+        }
+      );
+
       const root = data?.Data || data?.data || data || {};
 
       const okRaw =
-        root?.IsSuccess ?? root?.isSuccess ?? data?.IsSuccess ?? data?.isSuccess;
+        root?.IsSuccess ??
+        root?.isSuccess ??
+        data?.IsSuccess ??
+        data?.isSuccess;
+
       const ok =
         okRaw === true || okRaw === "true" || okRaw === 1 || okRaw === "1";
 
@@ -480,15 +510,29 @@ export default function Signin() {
         data?.refreshToken ||
         "";
 
+      const email =
+        root?.Email ||
+        root?.email ||
+        data?.Email ||
+        data?.email ||
+        formik.values.email ||
+        "";
+
       if (!ok && !token) {
-        const msg = extractMessage(root) || extractMessage(data) || t("googleLoginFailed");
+        const msg =
+          extractMessage(root) || extractMessage(data) || t("googleLoginFailed");
         setGeneralError(msg);
         toast.error(msg);
         return;
       }
 
-      toast.success(t("loginSuccessful"));
-      saveSessionAndRedirect(token, refreshToken, formik.values.email, "buyer");
+      toast.success(
+        actualAccountType === "seller"
+          ? t("loginSuccessfulAsSeller")
+          : t("loginSuccessfulAsUser")
+      );
+
+      saveSessionAndRedirect(token, refreshToken, email, actualAccountType);
     } catch (err) {
       const msg =
         extractMessage(err?.response?.data?.Data) ||
@@ -500,19 +544,33 @@ export default function Signin() {
       toast.error(msg);
     } finally {
       setLoading(false);
+      setAccountModalOpen(false);
     }
   }
 
-  async function handleFacebookBackend(accessToken) {
+  async function handleFacebookBackend(accessToken, selectedAccountType) {
     setGeneralError("");
     setLoading(true);
 
     try {
-      const data = await facebookAuth({ accessToken });
+      const actualAccountType = normalizeAccountType(selectedAccountType);
+      const backendRole = accountTypeToBackendRole(actualAccountType);
+
+      const data = await facebookAuth(
+        { accessToken },
+        {
+          params: { role: backendRole },
+        }
+      );
+
       const root = data?.Data || data?.data || data || {};
 
       const okRaw =
-        root?.IsSuccess ?? root?.isSuccess ?? data?.IsSuccess ?? data?.isSuccess;
+        root?.IsSuccess ??
+        root?.isSuccess ??
+        data?.IsSuccess ??
+        data?.isSuccess;
+
       const ok =
         okRaw === true || okRaw === "true" || okRaw === 1 || okRaw === "1";
 
@@ -532,16 +590,31 @@ export default function Signin() {
         data?.refreshToken ||
         "";
 
+      const email =
+        root?.Email ||
+        root?.email ||
+        data?.Email ||
+        data?.email ||
+        formik.values.email ||
+        "";
+
       if (!ok && !token) {
         const msg =
-          extractMessage(root) || extractMessage(data) || t("facebookLoginFailed");
+          extractMessage(root) ||
+          extractMessage(data) ||
+          t("facebookLoginFailed");
         setGeneralError(msg);
         toast.error(msg);
         return;
       }
 
-      toast.success(t("loginSuccessful"));
-      saveSessionAndRedirect(token, refreshToken, formik.values.email, "buyer");
+      toast.success(
+        actualAccountType === "seller"
+          ? t("loginSuccessfulAsSeller")
+          : t("loginSuccessfulAsUser")
+      );
+
+      saveSessionAndRedirect(token, refreshToken, email, actualAccountType);
     } catch (err) {
       const msg =
         extractMessage(err?.response?.data?.Data) ||
@@ -553,11 +626,13 @@ export default function Signin() {
       toast.error(msg);
     } finally {
       setLoading(false);
+      setAccountModalOpen(false);
     }
   }
 
   useEffect(() => {
     if (!GOOGLE_CLIENT_ID) return;
+
     if (googleScriptLoadedRef.current) {
       setGoogleReady(true);
       return;
@@ -611,7 +686,10 @@ export default function Signin() {
             return;
           }
 
-          await handleGoogleBackend(idToken);
+          await handleGoogleBackend(
+            idToken,
+            pendingSocialAccountTypeRef.current || "buyer"
+          );
         },
         auto_select: false,
         cancel_on_tap_outside: true,
@@ -677,8 +755,10 @@ export default function Signin() {
     document.body.appendChild(s);
   }, [t]);
 
-  function handleGoogleLogin() {
+  function startGoogleLogin(selectedAccountType) {
     setGeneralError("");
+
+    pendingSocialAccountTypeRef.current = normalizeAccountType(selectedAccountType);
 
     if (!GOOGLE_CLIENT_ID) {
       const msg = t("googleEnvMissing");
@@ -725,8 +805,11 @@ export default function Signin() {
     }
   }
 
-  function handleFacebookLogin() {
+  function startFacebookLogin(selectedAccountType) {
     setGeneralError("");
+
+    const actualAccountType = normalizeAccountType(selectedAccountType);
+    pendingSocialAccountTypeRef.current = actualAccountType;
 
     if (!FACEBOOK_APP_ID) {
       const msg = t("facebookEnvMissing");
@@ -753,13 +836,43 @@ export default function Signin() {
           return;
         }
 
-        handleFacebookBackend(accessToken);
+        handleFacebookBackend(accessToken, actualAccountType);
       },
       {
         scope: "public_profile,email",
         return_scopes: true,
       }
     );
+  }
+
+  function handleGoogleLoginClick() {
+    setGeneralError("");
+    setLoginMethod("google");
+    setAccountModalOpen(true);
+  }
+
+  function handleFacebookLoginClick() {
+    setGeneralError("");
+    setLoginMethod("facebook");
+    setAccountModalOpen(true);
+  }
+
+  function handleAccountTypeSelect(accountType) {
+    const actualAccountType = normalizeAccountType(accountType);
+
+    if (loginMethod === "google") {
+      setAccountModalOpen(false);
+      startGoogleLogin(actualAccountType);
+      return;
+    }
+
+    if (loginMethod === "facebook") {
+      setAccountModalOpen(false);
+      startFacebookLogin(actualAccountType);
+      return;
+    }
+
+    handlePasswordLogin(formik.values, actualAccountType);
   }
 
   return (
@@ -772,7 +885,9 @@ export default function Signin() {
           <h1 style={{ padding: "10px 0" }}>{t("heading")}</h1>
 
           <form className="forms" onSubmit={formik.handleSubmit}>
-            {generalError && <div className="alert alert-danger">{generalError}</div>}
+            {generalError && (
+              <div className="alert alert-danger">{generalError}</div>
+            )}
 
             <fieldset
               disabled={loading}
@@ -802,7 +917,10 @@ export default function Signin() {
                 <div className="alert alert-danger">{formik.errors.email}</div>
               )}
 
-              <div className="input-group mb-5" style={{ position: "relative" }}>
+              <div
+                className="input-group mb-5"
+                style={{ position: "relative" }}
+              >
                 <input
                   type={showPassword ? "text" : "password"}
                   name="password"
@@ -819,6 +937,7 @@ export default function Signin() {
                     paddingLeft: isArabic ? "45px" : undefined,
                   }}
                 />
+
                 <PasswordToggleButton
                   showPassword={showPassword}
                   onToggle={() => setShowPassword((prev) => !prev)}
@@ -832,7 +951,9 @@ export default function Signin() {
               </div>
 
               {formik.touched.password && formik.errors.password && (
-                <div className="alert alert-danger">{formik.errors.password}</div>
+                <div className="alert alert-danger">
+                  {formik.errors.password}
+                </div>
               )}
 
               <div className="forgot-wrapper">
@@ -848,15 +969,12 @@ export default function Signin() {
                   disabled={loading || !formik.isValid}
                   style={{
                     opacity: loading || !formik.isValid ? 0.8 : 1,
-                    cursor: loading || !formik.isValid ? "not-allowed" : "pointer",
+                    cursor:
+                      loading || !formik.isValid ? "not-allowed" : "pointer",
                     pointerEvents: loading ? "none" : "auto",
                   }}
                 >
-                  {loading ? (
-                    <></>
-                  ) : (
-                    t("loginNow")
-                  )}
+                  {loading ? <></> : t("loginNow")}
                 </button>
               </div>
 
@@ -875,7 +993,7 @@ export default function Signin() {
                 <button
                   type="button"
                   className="social-box google"
-                  onClick={handleGoogleLogin}
+                  onClick={handleGoogleLoginClick}
                   disabled={loading}
                   style={{
                     opacity: loading ? 0.8 : 1,
@@ -889,14 +1007,18 @@ export default function Signin() {
                 <button
                   type="button"
                   className="social-box facebook"
-                  onClick={handleFacebookLogin}
+                  onClick={handleFacebookLoginClick}
                   disabled={loading}
                   style={{
                     opacity: loading ? 0.8 : 1,
                     cursor: loading ? "not-allowed" : "pointer",
                   }}
                 >
-                  <img src={facebookLogo} alt="Facebook" className="social-logo" />
+                  <img
+                    src={facebookLogo}
+                    alt="Facebook"
+                    className="social-logo"
+                  />
                   <span>{t("signInWithFacebook")}</span>
                 </button>
 
@@ -918,11 +1040,11 @@ export default function Signin() {
       </div>
 
       <AccountTypeModal
-        open={loginModalOpen}
+        open={accountModalOpen}
         onClose={() => {
-          if (!loading) setLoginModalOpen(false);
+          if (!loading) setAccountModalOpen(false);
         }}
-        onSelect={(accountType) => handleLogin(formik.values, accountType)}
+        onSelect={handleAccountTypeSelect}
         loading={loading}
         t={t}
       />
