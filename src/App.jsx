@@ -31,7 +31,7 @@ import Chat from "./Components/Home/Chat";
 import Transactions from "./Components/Home/transactions";
 import Withdraw from "./Components/Home/withdraw";
 import Deposit from "./Components/Home/deposit";
-import Saved_Cards from "./Components/Home/Saved_cards";
+import Saved_Cards from "./Components/Home/Saved_Cards";
 import Account_edit from "./Components/Home/Account_edit";
 import Tracking from "./Components/Home/Tracking";
 import Help_support from "./Components/Home/Help_support";
