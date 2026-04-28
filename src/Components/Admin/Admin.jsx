@@ -15,7 +15,7 @@ import {
 import icon from "../../assets/Person at the Center of Circles.png";
 import "./admin.css";
 import api from "../../API/axios";
-import Skelaton from "../../components/Skelaton"; // change path only if your file is in another folder
+import Skelaton from "../../Components/Skelaton"; // change path only if your file is in another folder
 
 export default function Admin() {
   const navigate = useNavigate();
