@@ -233,7 +233,7 @@ export default function Signin() {
   const [loading, setLoading] = useState(false);
   const [googleReady, setGoogleReady] = useState(false);
   const [facebookReady, setFacebookReady] = useState(false);
-  const [generalError, setGeneralError] = useState(""); 
+  const [generalError, setGeneralError] = useState("");
 
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [loginMethod, setLoginMethod] = useState("password");
@@ -268,11 +268,58 @@ export default function Signin() {
     });
   };
 
-  const getRedirectAfterLogin = (finalRole) => {
-    const from = location.state?.from?.pathname;
+  const isAllowedRedirectForRole = (path, finalRole) => {
+    const cleanPath = String(path || "").trim();
 
-    if (from) {
-      return from;
+    if (!cleanPath || !cleanPath.startsWith("/")) {
+      return false;
+    }
+
+    if (cleanPath.startsWith("/login") || cleanPath.startsWith("/sign-in")) {
+      return false;
+    }
+
+    if (finalRole === "admin") {
+      return cleanPath.startsWith("/admin");
+    }
+
+    if (finalRole === "seller") {
+      return (
+        cleanPath === "/seller" ||
+        cleanPath.startsWith("/seller") ||
+        cleanPath.startsWith("/seller-") ||
+        cleanPath.startsWith("/seller_") ||
+        cleanPath === "/lot-Auction" ||
+        cleanPath === "/single-Auction"
+      );
+    }
+
+    if (finalRole === "user") {
+      return !cleanPath.startsWith("/admin") && !cleanPath.startsWith("/seller");
+    }
+
+    return false;
+  };
+
+  const getRedirectAfterLogin = (finalRole) => {
+    const params = new URLSearchParams(location.search);
+    const redirectFromQuery = params.get("redirect");
+
+    if (redirectFromQuery) {
+      const decodedRedirect = decodeURIComponent(redirectFromQuery);
+
+      if (isAllowedRedirectForRole(decodedRedirect, finalRole)) {
+        return decodedRedirect;
+      }
+    }
+
+    const fromPath =
+      location.state?.from?.pathname && location.state?.from?.search
+        ? `${location.state.from.pathname}${location.state.from.search}`
+        : location.state?.from?.pathname;
+
+    if (fromPath && isAllowedRedirectForRole(fromPath, finalRole)) {
+      return fromPath;
     }
 
     return roleToRoute(finalRole);
@@ -757,7 +804,9 @@ export default function Signin() {
   function startGoogleLogin(selectedAccountType) {
     setGeneralError("");
 
-    pendingSocialAccountTypeRef.current = normalizeAccountType(selectedAccountType);
+    pendingSocialAccountTypeRef.current = normalizeAccountType(
+      selectedAccountType
+    );
 
     if (!GOOGLE_CLIENT_ID) {
       const msg = t("googleEnvMissing");
