@@ -1,33 +1,30 @@
-import React, { useState , useEffect} from 'react'
-import img from '../../IMG/Error/404-status-code.png'
-import icon from '../../IMG/Error/error-404.png'
+import { useEffect } from "react";
+import errorImage from "../../IMG/Error/404-status-code.png";
+import faviconIcon from "../../IMG/Error/error-404.png";
 
-export default function () {
-            //title change
-            const [title, setTitle] = useState('Error 404 --- Not Found'); 
-            useEffect(() => {
-                document.title = title; 
-            }, [title]); 
-        
-            //icon change
-            const [favicon, setFavicon] = useState(icon); // Initial favicon
-            useEffect(() => {
-                const updateFavicon = (iconUrl) => {
-                const link = document.querySelector("link[rel~='icon']");
-                if (!link) {
-                    const newLink = document.createElement('link');
-                    newLink.rel = 'icon';
-                    newLink.href = iconUrl;
-                    document.head.appendChild(newLink);
-                } else {
-                    link.href = iconUrl;
-                }
-                };
-            updateFavicon(favicon);
-          }, [favicon]); // Dependency array with favicon, so it updates when favicon state changes
+function Error404() {
+  useEffect(() => {
+    // Set page title
+    document.title = "Error 404 — Not Found";
+
+    // Set favicon
+    let link = document.querySelector("link[rel~='icon']");
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+    link.href = faviconIcon;
+  }, []);
+
   return (
-    <>
-        <img className='ErrorImage' src={img}/>
-    </>
-  )
+    <img
+      className="ErrorImage"
+      src={errorImage}
+      alt="404 - Page Not Found"
+      style={{width:"100%" ,height:"100vh"}}
+    />
+  );
 }
+
+export default Error404;
