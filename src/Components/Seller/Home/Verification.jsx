@@ -4,8 +4,8 @@ import { useTranslation } from "react-i18next";
 import icon from "../../../assets/2.png";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { useTranslatedApiData } from "../../../hooks/useTranslatedApiData";
-import { useAutoTranslatedText } from "../../../hooks/useAutoTranslatedText";
+import { useTranslatedApiData } from "../../../Hooks/useTranslatedApiData";
+import { useAutoTranslatedText } from "../../../Hooks/useAutoTranslatedText";
 import {
   createSeller,
   personalVerification,

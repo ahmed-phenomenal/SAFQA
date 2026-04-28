@@ -17,7 +17,7 @@ import {
 } from "recharts";
 import "./seller.css";
 import icon from "../../assets/2.png";
-import { useTranslatedApiData } from "../../hooks/useTranslatedApiData";
+import { useTranslatedApiData } from "../../Hooks/useTranslatedApiData";
 
 import {
   getSellerProducts,
