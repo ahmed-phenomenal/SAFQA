@@ -34,7 +34,7 @@ import {
   getTopCustomers,
   getAuctionWinners,
   getMostPopularProductsForSeller,
-} from "../../api/sellerstatistics";
+} from "../../API/sellerstatistics";
 
 const COLORS = ["#023E8A", "#00B4D8", "#FFB703", "#E63946", "#8D99AE", "#6A4C93"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
