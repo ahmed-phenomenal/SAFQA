@@ -40,6 +40,73 @@ const getAnySellerSessionToken = () => {
     .trim();
 };
 
+const getCurrentAccountKey = () => {
+  return String(
+    localStorage.getItem("currentUserEmail") ||
+      localStorage.getItem("pendingEmail") ||
+      sessionStorage.getItem("currentUserEmail") ||
+      sessionStorage.getItem("pendingEmail") ||
+      "guest"
+  )
+    .trim()
+    .toLowerCase();
+};
+
+const getScopedKey = (baseKey) => `${baseKey}:${getCurrentAccountKey()}`;
+const markSellerVerifiedLocally = () => {
+  if (typeof window === "undefined") return false;
+
+  const accountKey = getCurrentAccountKey();
+
+  const scopedVerifiedKey = `seller_verified_local:${accountKey}`;
+  const scopedSubmittedKey = `seller_verification_submitted:${accountKey}`;
+
+  sessionStorage.setItem(scopedVerifiedKey, "true");
+  localStorage.setItem(scopedVerifiedKey, "true");
+
+  sessionStorage.setItem(scopedSubmittedKey, "true");
+  localStorage.setItem(scopedSubmittedKey, "true");
+
+  sessionStorage.setItem("seller_verified_global", "true");
+  localStorage.setItem("seller_verified_global", "true");
+
+  sessionStorage.setItem("seller_verification_submitted_global", "true");
+  localStorage.setItem("seller_verification_submitted_global", "true");
+
+  sessionStorage.setItem("role", "seller");
+  sessionStorage.setItem("accountType", "seller");
+
+  window.dispatchEvent(new CustomEvent("seller-verification-updated"));
+
+  return true;
+};
+const hasLocalVerifiedState = () => {
+  return (
+    localStorage.getItem("seller_verified_global") === "true" ||
+    sessionStorage.getItem("seller_verified_global") === "true" ||
+    localStorage.getItem(getScopedKey("seller_verified_local")) === "true" ||
+    sessionStorage.getItem(getScopedKey("seller_verified_local")) === "true"
+  );
+};
+
+const clearOldBadSellerVerificationCache = () => {
+  try {
+    Object.keys(localStorage).forEach((key) => {
+      if (key.includes("seller_verification_prompt_dismissed")) {
+        localStorage.removeItem(key);
+      }
+    });
+
+    Object.keys(sessionStorage).forEach((key) => {
+      if (key.includes("seller_verification_prompt_dismissed")) {
+        sessionStorage.removeItem(key);
+      }
+    });
+  } catch {
+    //
+  }
+};
+
 const looksLikeBase64Image = (value) => {
   const raw = String(value || "").trim();
   if (!raw) return false;
@@ -71,44 +138,80 @@ const skeletonPulse = {
   backgroundSize: "400% 100%",
 };
 
+const makeVerifiedState = (previous = {}) => ({
+  ...previous,
+  isVerified: true,
+  isPending: false,
+  isRejected: false,
+  hasSubmittedVerification: true,
+  sellerCreated: true,
+  personalVerified: true,
+  businessVerified: true,
+  verificationStatus: "verified",
+  allowSellerFeatures: true,
+});
+
 const normalizeVerificationState = (data) => {
-  const normalizedStatus = String(data?.verificationStatus || "")
+  const localVerified = hasLocalVerifiedState();
+
+  const rawStatus = String(data?.verificationStatus || "")
     .trim()
     .toLowerCase();
 
-  const isVerified =
-    data?.isVerified === true || normalizedStatus === "verified";
+  const negativeStatus =
+    rawStatus.includes("not verified") ||
+    rawStatus.includes("not_verified") ||
+    rawStatus.includes("notverified") ||
+    rawStatus.includes("unverified") ||
+    rawStatus.includes("not approved") ||
+    rawStatus.includes("not_approved") ||
+    rawStatus.includes("not accepted") ||
+    rawStatus.includes("not_accepted");
 
-  const isPending =
-    !isVerified &&
-    (data?.isPending === true ||
-      data?.hasSubmittedVerification === true ||
-      normalizedStatus === "pending");
+  const normalizedStatus = negativeStatus ? "" : rawStatus;
+
+  const isVerified =
+    localVerified ||
+    (!negativeStatus &&
+      (data?.isVerified === true ||
+        normalizedStatus === "verified" ||
+        normalizedStatus === "approved" ||
+        normalizedStatus === "accepted" ||
+        normalizedStatus === "admin approved" ||
+        normalizedStatus === "fully verified"));
+
+  if (isVerified) {
+    return makeVerifiedState(data);
+  }
 
   const isRejected =
-    !isVerified &&
-    !isPending &&
-    (data?.isRejected === true || normalizedStatus === "rejected");
+    data?.isRejected === true ||
+    normalizedStatus === "rejected" ||
+    normalizedStatus === "declined" ||
+    normalizedStatus === "failed";
+
+  const isPending =
+    !isRejected &&
+    (data?.isPending === true ||
+      data?.hasSubmittedVerification === true ||
+      normalizedStatus === "pending" ||
+      normalizedStatus === "submitted" ||
+      normalizedStatus === "under review" ||
+      normalizedStatus === "processing");
 
   const hasSubmittedVerification =
-    data?.hasSubmittedVerification === true || isVerified || isPending;
+    data?.hasSubmittedVerification === true || isPending;
 
   return {
-    isVerified,
+    isVerified: false,
     isPending,
     isRejected,
     hasSubmittedVerification,
     sellerCreated: !!data?.sellerCreated,
     personalVerified: !!data?.personalVerified,
     businessVerified: !!data?.businessVerified,
-    verificationStatus: isVerified
-      ? "verified"
-      : isPending
-      ? "pending"
-      : isRejected
-      ? "rejected"
-      : normalizedStatus || "",
-    allowSellerFeatures: isVerified || isPending || hasSubmittedVerification,
+    verificationStatus: isPending ? "pending" : isRejected ? "rejected" : "",
+    allowSellerFeatures: false,
   };
 };
 
@@ -120,17 +223,9 @@ export default function Seller() {
   const [confirmBox, setConfirmBox] = useState(false);
   const [selectedAuctionType, setSelectedAuctionType] = useState("");
   const [verificationChecking, setVerificationChecking] = useState(false);
-  const [verificationStatus, setVerificationStatus] = useState({
-    isVerified: false,
-    isPending: false,
-    isRejected: false,
-    hasSubmittedVerification: false,
-    sellerCreated: false,
-    personalVerified: false,
-    businessVerified: false,
-    verificationStatus: "",
-    allowSellerFeatures: false,
-  });
+  const [verificationStatus, setVerificationStatus] = useState(() =>
+    normalizeVerificationState({})
+  );
   const [notificationsCount, setNotificationsCount] = useState(0);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
 
@@ -151,6 +246,8 @@ export default function Seller() {
   }, [t]);
 
   useEffect(() => {
+    clearOldBadSellerVerificationCache();
+
     const link = document.querySelector("link[rel~='icon']");
     if (link) {
       link.href = icon;
@@ -172,10 +269,27 @@ export default function Seller() {
     }
   }, [navigate]);
 
+  const applyVerifiedFromProtectedApi = useCallback(() => {
+    markSellerVerifiedLocally();
+    setVerificationStatus((prev) => makeVerifiedState(prev));
+    setShowWelcomeVerificationModal(false);
+  }, []);
+
   const syncVerificationState = useCallback(async () => {
     try {
+      if (hasLocalVerifiedState()) {
+        const verified = makeVerifiedState({});
+        setVerificationStatus(verified);
+        setShowWelcomeVerificationModal(false);
+        return verified;
+      }
+
       const rawData = await getSellerVerificationStatus();
       const normalized = normalizeVerificationState(rawData);
+
+      if (normalized.isVerified) {
+        markSellerVerifiedLocally();
+      }
 
       setVerificationStatus(normalized);
 
@@ -189,7 +303,11 @@ export default function Seller() {
     } catch {
       const fallback = normalizeVerificationState({});
       setVerificationStatus(fallback);
-      setShowWelcomeVerificationModal(true);
+
+      if (!fallback.isVerified && !fallback.isPending) {
+        setShowWelcomeVerificationModal(true);
+      }
+
       return fallback;
     }
   }, []);
@@ -209,13 +327,16 @@ export default function Seller() {
 
         if (!mounted) return;
 
-        const mergedVerification = normalizeVerificationState({
-          ...verificationData,
-          verificationStatus:
-            profileData?.verificationStatus || verificationData?.verificationStatus,
-        });
+        const realVerification = normalizeVerificationState(verificationData);
 
-        setVerificationStatus(mergedVerification);
+        if (realVerification.isVerified) {
+          markSellerVerifiedLocally();
+        }
+
+        setVerificationStatus(realVerification);
+        setShowWelcomeVerificationModal(
+          !realVerification.isVerified && !realVerification.isPending
+        );
 
         setSellerProfile({
           name: profileData?.name || "",
@@ -260,6 +381,10 @@ export default function Seller() {
     try {
       setNotificationsLoading(true);
       const data = await getNotifications();
+
+      // If notifications API succeeds, backend accepted seller as verified.
+      applyVerifiedFromProtectedApi();
+
       const list = Array.isArray(data) ? data : [];
       const count = getUnseenNotificationsCount(list);
       setNotificationsCount(count);
@@ -268,7 +393,7 @@ export default function Seller() {
     } finally {
       setNotificationsLoading(false);
     }
-  }, []);
+  }, [applyVerifiedFromProtectedApi]);
 
   useEffect(() => {
     syncVerificationState();
@@ -285,6 +410,10 @@ export default function Seller() {
       loadNotificationsCount();
     };
 
+    const handleVerificationUpdated = () => {
+      applyVerifiedFromProtectedApi();
+    };
+
     const handleFocus = async () => {
       await syncVerificationState();
       loadNotificationsCount();
@@ -294,6 +423,10 @@ export default function Seller() {
       "seller-notifications-updated",
       handleNotificationsUpdated
     );
+    window.addEventListener(
+      "seller-verification-updated",
+      handleVerificationUpdated
+    );
     window.addEventListener("focus", handleFocus);
 
     return () => {
@@ -301,9 +434,13 @@ export default function Seller() {
         "seller-notifications-updated",
         handleNotificationsUpdated
       );
+      window.removeEventListener(
+        "seller-verification-updated",
+        handleVerificationUpdated
+      );
       window.removeEventListener("focus", handleFocus);
     };
-  }, [loadNotificationsCount, syncVerificationState]);
+  }, [applyVerifiedFromProtectedApi, loadNotificationsCount, syncVerificationState]);
 
   const closeVerificationModal = () => {
     setConfirmBox(false);
@@ -321,7 +458,8 @@ export default function Seller() {
     navigate(VERIFICATION_ROUTE, {
       state: {
         mode:
-          verificationStatus?.isPending || verificationStatus?.hasSubmittedVerification
+          verificationStatus?.isPending ||
+          verificationStatus?.hasSubmittedVerification
             ? "review"
             : "verify",
       },
@@ -345,9 +483,14 @@ export default function Seller() {
       setSelectedAuctionType(auctionType);
       setVerificationChecking(true);
 
+      if (verificationStatus?.isVerified || hasLocalVerifiedState()) {
+        navigate(getAuctionRoute(auctionType));
+        return;
+      }
+
       const freshStatus = await syncVerificationState();
 
-      if (freshStatus.allowSellerFeatures) {
+      if (freshStatus.isVerified) {
         navigate(getAuctionRoute(auctionType));
         return;
       }
@@ -720,10 +863,7 @@ export default function Seller() {
             </button>
 
             <div className="seller-small-grid">
-              <Link
-                to="/seller-history"
-                className="seller-card seller-card-small"
-              >
+              <Link to="/seller-history" className="seller-card seller-card-small">
                 <img src={historyImg} alt={t("history")} />
                 <div className="seller-card-overlay"></div>
                 <div className="seller-card-text seller-card-text-small">
@@ -845,7 +985,9 @@ export default function Seller() {
         <div className="seller-confirm-overlay">
           <div className="seller-confirm-modal">
             <h3>
-              {isPendingOrSubmitted ? t("reviewVerification") : t("verificationRequired")}
+              {isPendingOrSubmitted
+                ? t("reviewVerification")
+                : t("verificationRequired")}
             </h3>
 
             <p>

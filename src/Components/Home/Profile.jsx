@@ -6,6 +6,7 @@ import { forgetPasswordSignoutAll } from "../../API/auth";
 import { clearStoredSession } from "../../API/authAccess";
 import icon from "../../assets/2.png";
 import { getUserDisplayProfile } from "../../API/userProfile";
+import Navbar from "../Sign-in/Navbar";
 
 const skeletonPulse = {
   animation: "userProfileSkeletonPulse 1.4s ease-in-out infinite",
@@ -155,13 +156,16 @@ export default function Profile() {
 
   return (
     <>
+    <Navbar />
       <style>
         {`
           @keyframes userProfileSkeletonPulse {
             0% { background-position: 100% 50%; }
             100% { background-position: 0 50%; }
           }
-
+          .seller-profile{
+          padding:120px 0 0;
+          }
           .seller-profile-account-dropdown {
             display: grid !important;
             grid-template-columns: 1fr !important;
@@ -202,7 +206,7 @@ export default function Profile() {
         `}
       </style>
 
-      <div className="seller-profile py-3" dir={isArabic ? "rtl" : "ltr"}>
+      <div className="seller-profile" dir={isArabic ? "rtl" : "ltr"}>
         <div className="seller-profile-container">
           <h1 className="seller-profile-title">
             {t("profileTitle", "PROFILE")}

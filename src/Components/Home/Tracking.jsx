@@ -3,45 +3,6 @@ import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import icon from "../../assets/2.png";
 import { getDeliveredOrders, getInProgressOrders } from "../../API/order";
-import { getLocalDeliveryProgress } from "../../API/delivery";
-
-const demoTrackingData = {
-  title: "Golden Ring",
-  image:
-    "https://images.unsplash.com/photo-1605100804763-247f67b3557e?q=80&w=900&auto=format&fit=crop",
-  deliveryDate: "19 June 2025",
-  trackingId: "TRK-9228460-EG",
-  statusSteps: [
-    {
-      id: 1,
-      title: "Order placed",
-      date: "13 June 2025, 10:00am",
-      done: true,
-      icon: "fa-solid fa-clipboard-list",
-    },
-    {
-      id: 2,
-      title: "In progress",
-      date: "13 June 2025, 11:00am",
-      done: true,
-      icon: "fa-solid fa-gear",
-    },
-    {
-      id: 3,
-      title: "Shipping",
-      date: "13 June 2025, 03:00pm",
-      done: false,
-      icon: "fa-solid fa-truck-fast",
-    },
-    {
-      id: 4,
-      title: "Delivered",
-      date: "19 June 2025, 06:00pm",
-      done: false,
-      icon: "fa-solid fa-hand-holding-heart",
-    },
-  ],
-};
 
 const toImageSrc = (value) => {
   const raw = String(value || "").trim();
@@ -100,11 +61,60 @@ export default function Tracking() {
   };
 
   const auctionId = useMemo(() => {
-    return Number(location?.state?.auctionId || 0);
+    const params = new URLSearchParams(location.search);
+    return Number(location?.state?.auctionId || params.get("auctionId") || 0);
   }, [location]);
 
   const [loading, setLoading] = useState(true);
-  const [trackingData, setTrackingData] = useState(demoTrackingData);
+  const [trackingData, setTrackingData] = useState(null);
+  const [error, setError] = useState("");
+
+  const getStatusLabel = (status, fallbackStatus) => {
+    const s = Number(status || fallbackStatus || 1);
+
+    if (s === 1) return tr("orderPlaced", "Order placed");
+    if (s === 2) return tr("inProgress", "In progress");
+    if (s === 3) return tr("shipping", "Shipping");
+    if (s === 4) return tr("delivered", "Delivered");
+    if (s === 5) return tr("failed", "Failed");
+
+    return tr("inProgress", "In progress");
+  };
+
+  const getStatusSteps = (status, isDelivered) => {
+    const s = isDelivered ? 4 : Number(status || 1);
+
+    return [
+      {
+        id: 1,
+        title: tr("orderPlaced", "Order placed"),
+        date: s >= 1 ? tr("completed", "Completed") : "--",
+        done: s >= 1,
+        icon: "fa-solid fa-clipboard-list",
+      },
+      {
+        id: 2,
+        title: tr("inProgress", "In progress"),
+        date: s >= 2 ? tr("completed", "Completed") : "--",
+        done: s >= 2,
+        icon: "fa-solid fa-gear",
+      },
+      {
+        id: 3,
+        title: tr("shipping", "Shipping"),
+        date: s >= 3 ? tr("completed", "Completed") : "--",
+        done: s >= 3,
+        icon: "fa-solid fa-truck-fast",
+      },
+      {
+        id: 4,
+        title: s === 5 ? tr("failed", "Failed") : tr("delivered", "Delivered"),
+        date: s === 4 || s === 5 ? tr("completed", "Completed") : "--",
+        done: s === 4 || s === 5,
+        icon: s === 5 ? "fa-solid fa-circle-xmark" : "fa-solid fa-hand-holding-heart",
+      },
+    ];
+  };
 
   useEffect(() => {
     document.title = tr("trackingDocTitle", "Tracking");
@@ -124,197 +134,68 @@ export default function Tracking() {
     const loadTracking = async () => {
       try {
         setLoading(true);
+        setError("");
 
         if (!auctionId) {
-          setTrackingData(demoTrackingData);
+          setTrackingData(null);
           return;
         }
 
-        const localProgressMap = getLocalDeliveryProgress();
-        const localProgress = localProgressMap[auctionId] || null;
-
-        const [delivered, inProgress] = await Promise.all([
+        const [deliveredOrders, progressOrders] = await Promise.all([
           getDeliveredOrders(),
           getInProgressOrders(),
         ]);
 
-        const deliveredMatch = (Array.isArray(delivered) ? delivered : []).find(
-          (item) => Number(item?.auctionId || 0) === auctionId
+        const deliveredList = Array.isArray(deliveredOrders) ? deliveredOrders : [];
+        const progressList = Array.isArray(progressOrders) ? progressOrders : [];
+
+        const deliveredMatch = deliveredList.find(
+          (item) => Number(item?.auctionId || item?.id || 0) === auctionId
         );
 
-        const progressMatch = (Array.isArray(inProgress) ? inProgress : []).find(
-          (item) => Number(item?.auctionId || 0) === auctionId
+        const progressMatch = progressList.find(
+          (item) => Number(item?.auctionId || item?.id || 0) === auctionId
         );
 
-        if (deliveredMatch) {
-          const imageSrc = Array.isArray(deliveredMatch.images)
-            ? toImageSrc(deliveredMatch.images[0])
-            : "";
+        const order = deliveredMatch || progressMatch;
 
-          setTrackingData({
-            title:
-              deliveredMatch?.title ||
-              tr("auctionNumber", `Auction #${auctionId}`, { id: auctionId }),
-            image: imageSrc || demoTrackingData.image,
-            deliveryDate: formatDateOnly(deliveredMatch.deliveredAt),
-            trackingId: `TRK-${auctionId}-EG`,
-            statusSteps: [
-              {
-                id: 1,
-                title: tr("orderPlaced", "Order placed"),
-                date: formatDateTime(deliveredMatch.deliveredAt),
-                done: true,
-                icon: "fa-solid fa-clipboard-list",
-              },
-              {
-                id: 2,
-                title: tr("checkedByDelivery", "Checked by delivery"),
-                date: formatDateTime(deliveredMatch.deliveredAt),
-                done: true,
-                icon: "fa-solid fa-circle-check",
-              },
-              {
-                id: 3,
-                title: tr("shipping", "Shipping"),
-                date: formatDateTime(deliveredMatch.deliveredAt),
-                done: true,
-                icon: "fa-solid fa-truck-fast",
-              },
-              {
-                id: 4,
-                title: tr("delivered", "Delivered"),
-                date: formatDateTime(deliveredMatch.deliveredAt),
-                done: true,
-                icon: "fa-solid fa-hand-holding-heart",
-              },
-            ],
-          });
+        if (!order) {
+          setTrackingData(null);
           return;
         }
 
-        if (progressMatch) {
-          const imageSrc = Array.isArray(progressMatch.images)
-            ? toImageSrc(progressMatch.images[0])
-            : localProgress?.uploadedImage || "";
+        const isDelivered = Boolean(deliveredMatch);
+        const status = isDelivered ? 4 : Number(order?.status || order?.deliveryStatus || 1);
 
-          const checkedDone = !!localProgress?.step2Checked;
-          const contactDone = !!localProgress?.step3Submitted;
-          const shippingDone = !!localProgress?.step4Uploaded;
-          const failedDone = !!localProgress?.notCompleted;
+        const imageSrc = Array.isArray(order?.images)
+          ? toImageSrc(order.images[0])
+          : toImageSrc(order?.image || order?.Image || "");
 
-          setTrackingData({
-            title:
-              progressMatch?.title ||
-              tr("auctionNumber", `Auction #${auctionId}`, { id: auctionId }),
-            image: imageSrc || demoTrackingData.image,
-            deliveryDate: formatDateOnly(progressMatch.expectedDeliveryDate),
-            trackingId: `TRK-${auctionId}-EG`,
-            statusSteps: [
-              {
-                id: 1,
-                title: tr("orderPlaced", "Order placed"),
-                date: formatDateTime(progressMatch.expectedDeliveryDate),
-                done: true,
-                icon: "fa-solid fa-clipboard-list",
-              },
-              {
-                id: 2,
-                title: tr("inProgress", "In progress"),
-                date: checkedDone ? formatDateTime(localProgress?.updatedAt) : "--",
-                done: checkedDone,
-                icon: "fa-solid fa-gear",
-              },
-              {
-                id: 3,
-                title: contactDone
-                  ? tr("contactConfirmed", "Contact confirmed")
-                  : tr("shipping", "Shipping"),
-                date: contactDone
-                  ? `${localProgress?.contact || ""} • ${formatDateTime(
-                      localProgress?.updatedAt
-                    )}`
-                  : "--",
-                done: contactDone,
-                icon: "fa-solid fa-truck-fast",
-              },
-              {
-                id: 4,
-                title: failedDone
-                  ? tr("deliveryNotCompleted", "Delivery not completed")
-                  : shippingDone
-                  ? tr("shippingProofUploaded", "Shipping proof uploaded")
-                  : tr("delivered", "Delivered"),
-                date:
-                  shippingDone || failedDone
-                    ? formatDateTime(localProgress?.updatedAt)
-                    : "--",
-                done: shippingDone || failedDone,
-                icon: failedDone
-                  ? "fa-solid fa-circle-xmark"
-                  : "fa-solid fa-hand-holding-heart",
-              },
-            ],
-          });
-          return;
-        }
-
-        if (localProgress) {
-          setTrackingData({
-            title: tr("auctionNumber", `Auction #${auctionId}`, { id: auctionId }),
-            image: localProgress?.uploadedImage || demoTrackingData.image,
-            deliveryDate: formatDateOnly(localProgress?.updatedAt),
-            trackingId: `TRK-${auctionId}-EG`,
-            statusSteps: [
-              {
-                id: 1,
-                title: tr("orderPlaced", "Order placed"),
-                date: formatDateTime(localProgress?.updatedAt),
-                done: true,
-                icon: "fa-solid fa-clipboard-list",
-              },
-              {
-                id: 2,
-                title: tr("inProgress", "In progress"),
-                date: localProgress?.step2Checked
-                  ? formatDateTime(localProgress?.updatedAt)
-                  : "--",
-                done: !!localProgress?.step2Checked,
-                icon: "fa-solid fa-gear",
-              },
-              {
-                id: 3,
-                title: tr("shipping", "Shipping"),
-                date: localProgress?.step3Submitted
-                  ? `${localProgress?.contact || ""} • ${formatDateTime(
-                      localProgress?.updatedAt
-                    )}`
-                  : "--",
-                done: !!localProgress?.step3Submitted,
-                icon: "fa-solid fa-truck-fast",
-              },
-              {
-                id: 4,
-                title: localProgress?.notCompleted
-                  ? tr("deliveryNotCompleted", "Delivery not completed")
-                  : tr("delivered", "Delivered"),
-                date:
-                  localProgress?.step4Uploaded || localProgress?.notCompleted
-                    ? formatDateTime(localProgress?.updatedAt)
-                    : "--",
-                done: !!localProgress?.step4Uploaded || !!localProgress?.notCompleted,
-                icon: localProgress?.notCompleted
-                  ? "fa-solid fa-circle-xmark"
-                  : "fa-solid fa-hand-holding-heart",
-              },
-            ],
-          });
-          return;
-        }
-
-        setTrackingData(demoTrackingData);
+        setTrackingData({
+          title:
+            order?.auctionTitle ||
+            order?.title ||
+            order?.AuctionTitle ||
+            tr("auctionNumber", `Auction #${auctionId}`),
+          image: imageSrc,
+          deliveryDate: isDelivered
+            ? formatDateOnly(order?.deliveredAt)
+            : formatDateOnly(order?.expectedDeliveryDate),
+          trackingId: order?.code || order?.trackingCode || `TRK-${auctionId}-EG`,
+          auctionId,
+          userEmail: order?.userEmail || order?.UserEmail || "-",
+          userNumber: order?.userNumber || order?.UserNumber || "-",
+          finalPrice: order?.finalPrice || order?.FinalPrice || 0,
+          statusLabel: getStatusLabel(status, isDelivered ? 4 : 1),
+          statusSteps: getStatusSteps(status, isDelivered),
+        });
       } catch (err) {
-        console.log(err?.response?.data || err?.message || err);
-        setTrackingData(demoTrackingData);
+        setError(
+          err?.response?.data?.message ||
+            err?.message ||
+            tr("failedToLoadTracking", "Failed to load tracking.")
+        );
+        setTrackingData(null);
       } finally {
         setLoading(false);
       }
@@ -567,99 +448,6 @@ export default function Tracking() {
           border: 1px solid #edf1f6;
           text-align: center;
         }
-
-        @media (max-width: 640px) {
-          .tracking-page {
-            padding: 22px 14px 50px;
-            background: #ffffff;
-          }
-
-          .tracking-shell {
-            width: 100%;
-          }
-
-          .tracking-top {
-            margin-bottom: 22px;
-          }
-
-          .tracking-title {
-            font-size: 26px;
-          }
-
-          .tracking-layout {
-            gap: 18px;
-          }
-
-          .tracking-product-card,
-          .tracking-info-panel {
-            box-shadow: none;
-            border: none;
-            padding: 0;
-            border-radius: 0;
-          }
-
-          .tracking-product-main {
-            background: #fff;
-            box-shadow: 0 3px 12px rgba(15, 23, 42, 0.08);
-            border-radius: 8px;
-            padding: 10px;
-          }
-
-          .tracking-product-image,
-          .tracking-product-empty {
-            width: 52px;
-            height: 52px;
-            border-radius: 6px;
-          }
-
-          .tracking-product-name {
-            font-size: 14px;
-          }
-
-          .tracking-section-title {
-            font-size: 15px;
-            margin-bottom: 10px;
-          }
-
-          .tracking-detail-row {
-            font-size: 12px;
-          }
-
-          .tracking-section {
-            margin-bottom: 22px;
-          }
-
-          .tracking-status-item {
-            grid-template-columns: 30px 1fr 24px;
-            gap: 10px;
-            padding-bottom: 18px;
-          }
-
-          .tracking-status-list::before {
-            left: ${isArabic ? "auto" : "14px"};
-            right: ${isArabic ? "14px" : "auto"};
-          }
-
-          .tracking-status-title {
-            font-size: 13px;
-          }
-
-          .tracking-status-date {
-            font-size: 10px;
-          }
-
-          .tracking-status-icon {
-            width: 24px;
-            height: 24px;
-            font-size: 12px;
-          }
-
-          .tracking-status-dot {
-            width: 20px;
-            height: 20px;
-            font-size: 10px;
-          }
-        }
       `}</style>
 
       <div className="tracking-shell">
@@ -670,6 +458,14 @@ export default function Tracking() {
         {loading ? (
           <div className="tracking-loading">
             {tr("loadingTracking", "Loading tracking...")}
+          </div>
+        ) : error ? (
+          <div className="tracking-loading" style={{ color: "#dc2626" }}>
+            {error}
+          </div>
+        ) : !trackingData ? (
+          <div className="tracking-loading">
+            {tr("noTrackingData", "No tracking data found.")}
           </div>
         ) : (
           <div className="tracking-layout">
@@ -715,6 +511,15 @@ export default function Tracking() {
                       {trackingData.trackingId}
                     </span>
                   </div>
+
+                  <div className="tracking-detail-row">
+                    <span className="tracking-detail-label">
+                      {tr("status", "Status")}
+                    </span>
+                    <span className="tracking-detail-value">
+                      {trackingData.statusLabel}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -727,14 +532,8 @@ export default function Tracking() {
                   {trackingData.statusSteps.map((step) => (
                     <li className="tracking-status-item" key={step.id}>
                       <div className="tracking-status-dot-wrap">
-                        <div
-                          className={`tracking-status-dot ${
-                            step.done ? "done" : ""
-                          }`}
-                        >
-                          {step.done ? (
-                            <i className="fa-solid fa-check"></i>
-                          ) : null}
+                        <div className={`tracking-status-dot ${step.done ? "done" : ""}`}>
+                          {step.done ? <i className="fa-solid fa-check"></i> : null}
                         </div>
                       </div>
 
@@ -743,11 +542,7 @@ export default function Tracking() {
                         <p className="tracking-status-date">{step.date}</p>
                       </div>
 
-                      <div
-                        className={`tracking-status-icon ${
-                          step.done ? "" : "inactive"
-                        }`}
-                      >
+                      <div className={`tracking-status-icon ${step.done ? "" : "inactive"}`}>
                         <i className={step.icon}></i>
                       </div>
                     </li>

@@ -221,6 +221,18 @@ const persistSellerSession = (res) => {
 
   return { sellerToken, sellerId };
 };
+const persistSellerSessionFromToken = (token) => {
+  const clean = cleanToken(token);
+
+  if (clean) {
+    writeSession("sellerToken", clean);
+  }
+
+  writeSession("role", "seller");
+  writeSession("accountType", "seller");
+
+  return clean;
+};
 
 const clearScopedVerificationProgress = () => {
   removeBoth(getScopedKey("seller_verified_local"));
@@ -685,12 +697,14 @@ const normalizeVerificationStatus = (raw) => {
 
   if (!value) return "";
 
+  // IMPORTANT:
+  // Do NOT treat boolean-like values such as "true" or "1" as verified.
+  // Some seller APIs use true/1/active only to mean the seller account exists/is active,
+  // not that admin approved the full verification documents.
   if (
     value.includes("approved") ||
     value.includes("verified") ||
-    value.includes("accepted") ||
-    value === "1" ||
-    value === "true"
+    value.includes("accepted")
   ) {
     return "verified";
   }
@@ -749,19 +763,13 @@ export const createSeller = async (payload) => {
   const { storeName, phoneNumber, cityId, businessType, description, logo } =
     buildCreateSellerPayload(payload);
 
-  const tokens = [primaryToken, ...getVerificationFlowTokens()].filter(Boolean);
-  let lastError = null;
+  const uniqueTokens = [
+    ...new Set(
+      [primaryToken, ...getVerificationFlowTokens()].map(cleanToken).filter(Boolean)
+    ),
+  ];
 
-  const buildAllFormData = () => {
-    const formData = new FormData();
-    formData.append("StoreName", storeName);
-    formData.append("PhoneNumber", phoneNumber);
-    formData.append("CityId", String(cityId));
-    formData.append("BusinessType", String(businessType));
-    formData.append("Description", description);
-    if (logo) formData.append("Logo", logo);
-    return formData;
-  };
+  let lastError = null;
 
   const queryParams = {
     StoreName: storeName,
@@ -771,88 +779,68 @@ export const createSeller = async (payload) => {
     Description: description,
   };
 
-  for (let i = 0; i < tokens.length; i += 1) {
-    const token = cleanToken(tokens[i]);
-    if (!token) continue;
+  for (let i = 0; i < uniqueTokens.length; i += 1) {
+    const token = uniqueTokens[i];
 
-    const attempts = [
-      () =>
-        sellerApi.post("/seller/CreateSeller", buildAllFormData(), {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }),
-      () => {
-        const formData = new FormData();
-        if (logo) formData.append("Logo", logo);
+    try {
+      const formData = new FormData();
+      appendIfHasValue(formData, "Logo", logo);
 
-        return sellerApi.post("/seller/CreateSeller", formData, {
-          params: queryParams,
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-      },
-    ];
+      const res = await sellerApi.post("/seller/CreateSeller", formData, {
+        params: queryParams,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-    for (let j = 0; j < attempts.length; j += 1) {
-      try {
-        const res = await attempts[j]();
+      persistSellerSession(res);
+      persistSellerSessionFromToken(token);
 
-        persistSellerSession(res);
+      const sellerId =
+        Number(res?.data?.sellerId || 0) ||
+        Number(res?.data?.data?.sellerId || 0) ||
+        Number(res?.data?.result?.sellerId || 0) ||
+        Number(deepFindValueByKeys(res?.data || {}, ["sellerId"]) || 0);
+
+      if (sellerId) {
+        writeBoth(getScopedKey("sellerId"), String(sellerId));
+      }
+
+      return {
+        ...(res?.data || {}),
+        alreadyExists: false,
+        isSuccess: true,
+        sellerId,
+      };
+    } catch (error) {
+      lastError = error;
+
+      const status = Number(error?.response?.status || 0);
+      const data = error?.response?.data || {};
+      const msg = String(data?.message || data?.Message || "").toLowerCase();
+
+      if (
+        status === 409 ||
+        msg.includes("already exists") ||
+        msg.includes("already exist") ||
+        msg.includes("already created")
+      ) {
+        persistSellerIdFromAnyData(data);
         persistSellerSessionFromToken(token);
 
-        const sellerId =
-          Number(res?.data?.sellerId || 0) ||
-          Number(res?.data?.data?.sellerId || 0) ||
-          Number(res?.data?.result?.sellerId || 0);
-
-        if (sellerId) {
-          writeBoth(getScopedKey("sellerId"), String(sellerId));
-        }
-
         return {
-          ...(res?.data || {}),
-          alreadyExists: false,
+          ...data,
+          alreadyExists: true,
           isSuccess: true,
+          message: data?.message || data?.Message || "Seller already exists.",
         };
-      } catch (error) {
-        lastError = error;
-        const status = Number(error?.response?.status || 0);
-        const msg = String(
-          error?.response?.data?.message ||
-            error?.response?.data?.Message ||
-            ""
-        ).toLowerCase();
-
-        if (
-          status === 409 ||
-          msg.includes("already exists") ||
-          msg.includes("already exist") ||
-          msg.includes("already created")
-        ) {
-          persistSellerSessionFromToken(token);
-
-          return {
-            ...(error?.response?.data || {}),
-            alreadyExists: true,
-            isSuccess: true,
-            message:
-              error?.response?.data?.message ||
-              error?.response?.data?.Message ||
-              "Seller already exists.",
-          };
-        }
-
-        const canTryNextShape =
-          !status || [400, 404, 405, 415, 422, 500].includes(status);
-
-        if (!canTryNextShape || j === attempts.length - 1) {
-          if (status !== 401 || i === tokens.length - 1) {
-            throw error;
-          }
-        }
       }
+
+      if (status === 401 && i < uniqueTokens.length - 1) {
+        continue;
+      }
+
+      throw error;
     }
   }
 
@@ -1518,13 +1506,21 @@ export const getSellerVerificationStatus = async () => {
     );
 
     const sellerCreated = sellerId > 0;
+
+    // Only admin-approved/verified status means verified.
+    // Existing seller account, active account, true/1 flags, or uploaded step-1 info are NOT verified.
     const isVerified = rawVerificationStatus === "verified";
-    const isPending =
-      rawVerificationStatus === "pending" ||
-      (!isVerified &&
-        (explicitSubmitted || explicitPersonalVerified || explicitBusinessVerified));
 
     const isRejected = rawVerificationStatus === "rejected";
+
+    const isPending =
+      !isVerified &&
+      !isRejected &&
+      (rawVerificationStatus === "pending" ||
+        explicitSubmitted ||
+        explicitPersonalVerified ||
+        explicitBusinessVerified ||
+        getLocalSubmittedState());
 
     if (isVerified) {
       setLocalVerifiedState(true);

@@ -1,17 +1,112 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import icon from "../../../assets/2.png";
-import {
-  createAuction,
-  getAuctionCategories,
-  getCategoryAttributes,
-  CONDITION_OPTIONS,
-  ATTRIBUTE_DATA_TYPES,
-  ATTRIBUTE_UNITS,
-} from "../../../API/createAuction";
+import { createAuction, getAuctionCategories } from "../../../API/createAuction";
 
 const BID_OPTIONS = ["100", "300", "500", "Specify"];
 const DURATION_OPTIONS = ["24 hours", "3 days", "7 days", "Specify"];
+const DRAFT_TTL_MS = 15 * 60 * 1000;
+const MAX_STARTING_PRICE = 999999999;
+const MAX_BID_INCREMENT = 2147483647;
+
+const getCurrentAccountKey = () => {
+  return String(
+    localStorage.getItem("currentUserEmail") ||
+      sessionStorage.getItem("currentUserEmail") ||
+      localStorage.getItem("pendingEmail") ||
+      sessionStorage.getItem("pendingEmail") ||
+      "guest"
+  )
+    .trim()
+    .toLowerCase();
+};
+
+const DRAFT_KEY = `lot_auction_draft:${getCurrentAccountKey()}`;
+
+const makeId = () => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random()}`;
+};
+
+const readDraft = () => {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+    if (!parsed?.expiresAt || Date.now() > parsed.expiresAt) {
+      localStorage.removeItem(DRAFT_KEY);
+      return null;
+    }
+
+    return parsed?.draft || null;
+  } catch {
+    return null;
+  }
+};
+
+const saveDraft = (draft) => {
+  try {
+    localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({
+        expiresAt: Date.now() + DRAFT_TTL_MS,
+        draft,
+      })
+    );
+  } catch {
+    //
+  }
+};
+
+const clearDraft = () => {
+  try {
+    localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    //
+  }
+};
+
+const fileToDataUrl = (file) =>
+  new Promise((resolve) => {
+    if (!file) {
+      resolve("");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => resolve("");
+    reader.readAsDataURL(file);
+  });
+
+const dataUrlToFile = (
+  dataUrl,
+  fileName = "image.png",
+  mimeType = "image/png"
+) => {
+  try {
+    if (!dataUrl || !dataUrl.includes(",")) return null;
+
+    const [header, base64] = dataUrl.split(",");
+    const detectedMime =
+      header.match(/data:(.*?);base64/)?.[1] || mimeType || "image/png";
+
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+
+    return new File([bytes], fileName, { type: detectedMime });
+  } catch {
+    return null;
+  }
+};
 
 const formatDateTimeLocalInput = (date) => {
   const d = new Date(date);
@@ -50,74 +145,113 @@ const isAllowedImage = (file) => {
   return allowed.includes(String(file.type || "").toLowerCase());
 };
 
-const isEmptyAttributeValue = (value) => {
-  return value === undefined || value === null || String(value).trim() === "";
-};
-
 const normalizeNumberInput = (value) =>
   String(value || "").replace(/[^\d.]/g, "");
 
-const normalizeIntegerInput = (value) =>
-  String(value || "").replace(/\D/g, "");
+const normalizeIntegerInput = (value) => String(value || "").replace(/\D/g, "");
 
-const getAttributeInputKind = (attribute) => {
-  const dataType = Number(attribute?.dataType || 0);
-
-  if (dataType === ATTRIBUTE_DATA_TYPES.TEXT) return "text";
-  if (dataType === ATTRIBUTE_DATA_TYPES.NUMBER) return "number";
-  if (dataType === ATTRIBUTE_DATA_TYPES.BOOLEAN) return "boolean";
-  if (dataType === ATTRIBUTE_DATA_TYPES.DATE) return "date";
-  if (dataType === ATTRIBUTE_DATA_TYPES.DATETIME) return "datetime";
-
-  return "text";
-};
-
-const buildDefaultItem = () => ({
+const makeEmptyItem = (categoryId = "") => ({
+  localId: makeId(),
+  title: "",
+  categoryId,
+  description: "",
+  count: "1",
   imageFile: null,
   imagePreview: "",
-  error: "",
-  title: "",
-  count: "1",
-  warrantyInfo: "",
-  condition: String(CONDITION_OPTIONS?.[0]?.value ?? 1),
-  attributeValues: {},
+  imageDataUrl: "",
+  imageMeta: {
+    name: "item-image.png",
+    type: "image/png",
+  },
 });
+
+const buildInitialItems = (draft) => {
+  const draftItems =
+    Array.isArray(draft?.items) && draft.items.length
+      ? draft.items
+      : [makeEmptyItem(draft?.categoryId || "")];
+
+  return draftItems.map((item) => {
+    const dataUrl = item?.image?.dataUrl || item?.imageDataUrl || "";
+    const name = item?.image?.name || item?.imageMeta?.name || "item-image.png";
+    const type = item?.image?.type || item?.imageMeta?.type || "image/png";
+
+    return {
+      localId: item?.localId || makeId(),
+      title: item?.title || "",
+      categoryId: item?.categoryId || draft?.categoryId || "",
+      description: item?.description || "",
+      count: item?.count || "1",
+      imageFile: dataUrl ? dataUrlToFile(dataUrl, name, type) : null,
+      imagePreview: dataUrl,
+      imageDataUrl: dataUrl,
+      imageMeta: {
+        name,
+        type,
+      },
+    };
+  });
+};
 
 export default function Lot_Auction() {
   const { t, i18n } = useTranslation();
   const isArabic = i18n.language === "ar";
+  const cachedDraft = readDraft();
 
   const [favicon] = useState(icon);
 
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(Number(cachedDraft?.step || 1));
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
   const [loadingCategories, setLoadingCategories] = useState(true);
-  const [loadingAttributes, setLoadingAttributes] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const [categories, setCategories] = useState([]);
-  const [categoryAttributes, setCategoryAttributes] = useState([]);
 
-  const [lotTitle, setLotTitle] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [description, setDescription] = useState("");
+  const restoredFile = cachedDraft?.headImage?.dataUrl
+    ? dataUrlToFile(
+        cachedDraft.headImage.dataUrl,
+        cachedDraft.headImage.name,
+        cachedDraft.headImage.type
+      )
+    : null;
 
-  const [selectedBid, setSelectedBid] = useState("100");
-  const [customBid, setCustomBid] = useState("");
-  const [startingPrice, setStartingPrice] = useState("");
+  const [lotTitle, setLotTitle] = useState(cachedDraft?.lotTitle || "");
+  const [categoryId, setCategoryId] = useState(cachedDraft?.categoryId || "");
+  const [description, setDescription] = useState(cachedDraft?.description || "");
+  const [lotItems, setLotItems] = useState(() => buildInitialItems(cachedDraft));
 
-  const [startDate, setStartDate] = useState(() =>
-    formatDateTimeLocalInput(new Date(Date.now() + 5 * 60 * 1000))
+  const [selectedBid, setSelectedBid] = useState(
+    cachedDraft?.selectedBid || "100"
   );
-  const [selectedDuration, setSelectedDuration] = useState("24 hours");
-  const [customEndDate, setCustomEndDate] = useState("");
+  const [customBid, setCustomBid] = useState(cachedDraft?.customBid || "");
+  const [startingPrice, setStartingPrice] = useState(
+    cachedDraft?.startingPrice || ""
+  );
 
-  const [items, setItems] = useState([buildDefaultItem()]);
+  const [startDate, setStartDate] = useState(
+    cachedDraft?.startDate ||
+      formatDateTimeLocalInput(new Date(Date.now() + 5 * 60 * 1000))
+  );
+  const [selectedDuration, setSelectedDuration] = useState(
+    cachedDraft?.selectedDuration || "24 hours"
+  );
+  const [customEndDate, setCustomEndDate] = useState(
+    cachedDraft?.customEndDate || ""
+  );
 
-  const [headImageFile, setHeadImageFile] = useState(null);
-  const [headImagePreview, setHeadImagePreview] = useState("");
+  const [headImageFile, setHeadImageFile] = useState(restoredFile);
+  const [headImagePreview, setHeadImagePreview] = useState(
+    cachedDraft?.headImage?.dataUrl || ""
+  );
+  const [headImageDataUrl, setHeadImageDataUrl] = useState(
+    cachedDraft?.headImage?.dataUrl || ""
+  );
+  const [headImageMeta, setHeadImageMeta] = useState({
+    name: cachedDraft?.headImage?.name || "head-image.png",
+    type: cachedDraft?.headImage?.type || "image/png",
+  });
   const [headError, setHeadError] = useState("");
 
   useEffect(() => {
@@ -157,10 +291,6 @@ export default function Lot_Auction() {
     );
   };
 
-  const getUnitLabel = (unit) => {
-    return ATTRIBUTE_UNITS?.[Number(unit)] || "";
-  };
-
   const getBidLabel = (bid) => {
     if (bid === "Specify") return t("specify");
     return bid;
@@ -172,16 +302,6 @@ export default function Lot_Auction() {
     if (duration === "7 days") return t("duration7Days");
     if (duration === "Specify") return t("specify");
     return duration;
-  };
-
-  const getConditionLabel = (label) => {
-    const value = String(label || "").trim().toLowerCase();
-
-    if (value === "new") return t("conditionNew");
-    if (value === "used") return t("conditionUsed");
-    if (value === "refurbished") return t("conditionRefurbished");
-
-    return t(String(label), { defaultValue: label });
   };
 
   useEffect(() => {
@@ -210,63 +330,18 @@ export default function Lot_Auction() {
   }, [t]);
 
   useEffect(() => {
-    let mounted = true;
-
-    const loadAttributes = async () => {
-      if (!categoryId) {
-        setCategoryAttributes([]);
-        setItems((prev) =>
-          prev.map((item) => ({
-            ...item,
-            attributeValues: {},
-          }))
-        );
-        return;
-      }
-
-      try {
-        setLoadingAttributes(true);
-        const data = await getCategoryAttributes(categoryId);
-        if (!mounted) return;
-
-        const safeAttributes = Array.isArray(data) ? data : [];
-        setCategoryAttributes(safeAttributes);
-
-        setItems((prev) =>
-          prev.map((item) => ({
-            ...item,
-            attributeValues: {},
-          }))
-        );
-      } catch (err) {
-        if (!mounted) return;
-        setCategoryAttributes([]);
-        setError(getErrorMessage(err, t("failedToLoadCategoryAttributes")));
-      } finally {
-        if (mounted) setLoadingAttributes(false);
-      }
-    };
-
-    loadAttributes();
-
     return () => {
-      mounted = false;
-    };
-  }, [categoryId, t]);
-
-  useEffect(() => {
-    return () => {
-      if (headImagePreview) {
+      if (headImagePreview && headImagePreview.startsWith("blob:")) {
         URL.revokeObjectURL(headImagePreview);
       }
 
-      items.forEach((item) => {
-        if (item.imagePreview) {
+      lotItems.forEach((item) => {
+        if (item.imagePreview && item.imagePreview.startsWith("blob:")) {
           URL.revokeObjectURL(item.imagePreview);
         }
       });
     };
-  }, [headImagePreview, items]);
+  }, [headImagePreview, lotItems]);
 
   const effectiveBidIncrement = useMemo(() => {
     if (selectedBid === "Specify") return String(customBid || "").trim();
@@ -282,49 +357,57 @@ export default function Lot_Auction() {
     return addHours(startDate, hours);
   }, [selectedDuration, customEndDate, startDate]);
 
-  const addItem = () => {
-    setItems((prev) => [...prev, buildDefaultItem()]);
-  };
-
-  const removeItem = (index) => {
-    if (items.length === 1) return;
-
-    const oldPreview = items[index]?.imagePreview;
-    if (oldPreview) URL.revokeObjectURL(oldPreview);
-
-    setItems((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const updateItem = (index, field, value) => {
-    setItems((prev) =>
-      prev.map((item, i) =>
-        i === index
+  useEffect(() => {
+    saveDraft({
+      step,
+      lotTitle,
+      categoryId,
+      description,
+      selectedBid,
+      customBid,
+      startingPrice,
+      startDate,
+      selectedDuration,
+      customEndDate,
+      headImage: headImageDataUrl
+        ? {
+            dataUrl: headImageDataUrl,
+            name: headImageMeta.name,
+            type: headImageMeta.type,
+          }
+        : null,
+      items: lotItems.map((item) => ({
+        localId: item.localId,
+        title: item.title,
+        categoryId: item.categoryId,
+        description: item.description,
+        count: item.count,
+        image: item.imageDataUrl
           ? {
-              ...item,
-              [field]: value,
+              dataUrl: item.imageDataUrl,
+              name: item.imageMeta.name,
+              type: item.imageMeta.type,
             }
-          : item
-      )
-    );
-  };
+          : null,
+      })),
+    });
+  }, [
+    step,
+    lotTitle,
+    categoryId,
+    description,
+    selectedBid,
+    customBid,
+    startingPrice,
+    startDate,
+    selectedDuration,
+    customEndDate,
+    headImageDataUrl,
+    headImageMeta,
+    lotItems,
+  ]);
 
-  const updateItemAttribute = (itemIndex, attributeId, value) => {
-    setItems((prev) =>
-      prev.map((item, i) =>
-        i === itemIndex
-          ? {
-              ...item,
-              attributeValues: {
-                ...(item.attributeValues || {}),
-                [attributeId]: value,
-              },
-            }
-          : item
-      )
-    );
-  };
-
-  const handleHeadImageUpload = (e) => {
+  const handleHeadImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -333,64 +416,103 @@ export default function Lot_Auction() {
       return;
     }
 
-    if (headImagePreview) {
+    if (headImagePreview && headImagePreview.startsWith("blob:")) {
       URL.revokeObjectURL(headImagePreview);
     }
 
+    const objectUrl = URL.createObjectURL(file);
+    const dataUrl = await fileToDataUrl(file);
+
     setHeadError("");
     setHeadImageFile(file);
-    setHeadImagePreview(URL.createObjectURL(file));
+    setHeadImagePreview(objectUrl);
+    setHeadImageDataUrl(dataUrl);
+    setHeadImageMeta({
+      name: file.name || "head-image.png",
+      type: file.type || "image/png",
+    });
   };
 
-  const handleItemImageUpload = (e, index) => {
+  const updateItem = (localId, patch) => {
+    setLotItems((prev) =>
+      prev.map((item) =>
+        item.localId === localId ? { ...item, ...patch } : item
+      )
+    );
+  };
+
+  const handleItemImageUpload = async (localId, e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!isAllowedImage(file)) {
-      updateItem(index, "error", t("onlyJpgPng"));
+      setError(t("onlyJpgPng"));
       return;
     }
 
-    const oldPreview = items[index]?.imagePreview;
-    if (oldPreview) {
-      URL.revokeObjectURL(oldPreview);
+    const currentItem = lotItems.find((item) => item.localId === localId);
+
+    if (currentItem?.imagePreview?.startsWith("blob:")) {
+      URL.revokeObjectURL(currentItem.imagePreview);
     }
 
-    updateItem(index, "error", "");
-    updateItem(index, "imageFile", file);
-    updateItem(index, "imagePreview", URL.createObjectURL(file));
+    const objectUrl = URL.createObjectURL(file);
+    const dataUrl = await fileToDataUrl(file);
+
+    updateItem(localId, {
+      imageFile: file,
+      imagePreview: objectUrl,
+      imageDataUrl: dataUrl,
+      imageMeta: {
+        name: file.name || "item-image.png",
+        type: file.type || "image/png",
+      },
+    });
+  };
+
+  const addItem = () => {
+    setLotItems((prev) => [...prev, makeEmptyItem(categoryId)]);
+  };
+
+  const removeItem = (localId) => {
+    setLotItems((prev) => {
+      if (prev.length <= 1) return prev;
+
+      const removed = prev.find((item) => item.localId === localId);
+      if (removed?.imagePreview?.startsWith("blob:")) {
+        URL.revokeObjectURL(removed.imagePreview);
+      }
+
+      return prev.filter((item) => item.localId !== localId);
+    });
   };
 
   const validateStepOne = () => {
+    if (!headImageFile) {
+      return t("headImageRequired", { defaultValue: "Head image is required" });
+    }
+
     if (!lotTitle.trim()) return t("lotTitleRequired");
-    if (!categoryId) return t("lotCategoryRequired");
     if (!description.trim()) return t("lotDescriptionRequired");
-    if (!items.length) return t("atLeastOneItemRequired");
 
-    for (let i = 0; i < items.length; i += 1) {
-      const item = items[i];
+    if (!lotItems.length) {
+      return t("itemsRequired", { defaultValue: "At least one item is required" });
+    }
 
-      if (!String(item.title || "").trim()) {
-        return t("itemTitleRequiredIndexed", { index: i + 1 });
+    for (let index = 0; index < lotItems.length; index += 1) {
+      const item = lotItems[index];
+      const number = index + 1;
+
+      if (!item.categoryId) {
+        return t("itemCategoryRequired", {
+          defaultValue: `Item ${number} category is required`,
+        });
       }
 
-      if (!item.count || Number(item.count) <= 0) {
-        return t("itemCountGreaterThanZeroIndexed", { index: i + 1 });
-      }
-
-      if (!String(item.warrantyInfo || "").trim()) {
-        return t("itemWarrantyRequiredIndexed", { index: i + 1 });
-      }
-
-      for (const attr of categoryAttributes) {
-        const rawValue = item.attributeValues?.[attr.id];
-
-        if (attr.isRequired && isEmptyAttributeValue(rawValue)) {
-          return t("attributeRequiredForItem", {
-            attribute: attr.name,
-            index: i + 1,
-          });
-        }
+      if (!item.imageFile) {
+        return t("itemImageRequired", {
+          defaultValue: `Item ${number} image is required`,
+        });
       }
     }
 
@@ -412,8 +534,16 @@ export default function Lot_Auction() {
       return t("startingPriceGreaterThanZero");
     }
 
+    if (startingPriceNumber > MAX_STARTING_PRICE) {
+      return `Maximum allowed is ${MAX_STARTING_PRICE}`;
+    }
+
     if (!Number.isFinite(bidIncrementNumber) || bidIncrementNumber <= 0) {
       return t("bidIncrementGreaterThanZero");
+    }
+
+    if (bidIncrementNumber > MAX_BID_INCREMENT) {
+      return `Maximum allowed is ${MAX_BID_INCREMENT}`;
     }
 
     return "";
@@ -432,123 +562,9 @@ export default function Lot_Auction() {
     setStep(2);
   };
 
-  const buildItemAttributes = (item) => {
-    return categoryAttributes
-      .map((attr) => {
-        const rawValue = item.attributeValues?.[attr.id];
-
-        if (isEmptyAttributeValue(rawValue)) return null;
-
-        const kind = getAttributeInputKind(attr);
-        let finalValue = rawValue;
-
-        if (kind === "datetime") {
-          finalValue = toApiDateTime(rawValue);
-        } else if (kind === "date") {
-          finalValue = String(rawValue).trim();
-        } else if (kind === "boolean") {
-          finalValue =
-            String(rawValue).trim().toLowerCase() === "true" ? "true" : "false";
-        } else {
-          finalValue = String(rawValue).trim();
-        }
-
-        return {
-          categoryAttributeId: Number(attr.id),
-          value: finalValue,
-        };
-      })
-      .filter(Boolean);
-  };
-
-  const renderAttributeInput = (attribute, item, itemIndex) => {
-    const value = item.attributeValues?.[attribute.id] ?? "";
-    const unitLabel = getUnitLabel(attribute.unit);
-    const kind = getAttributeInputKind(attribute);
-
-    if (kind === "number") {
-      return (
-        <input
-          className="input"
-          type="number"
-          value={value}
-          onChange={(e) =>
-            updateItemAttribute(
-              itemIndex,
-              attribute.id,
-              normalizeNumberInput(e.target.value)
-            )
-          }
-          placeholder={
-            unitLabel
-              ? t("enterFieldWithUnit", { field: attribute.name, unit: unitLabel })
-              : t("enterField", { field: attribute.name })
-          }
-        />
-      );
-    }
-
-    if (kind === "boolean") {
-      return (
-        <select
-          className="input"
-          value={value}
-          onChange={(e) =>
-            updateItemAttribute(itemIndex, attribute.id, e.target.value)
-          }
-        >
-          <option value="">{t("select")}</option>
-          <option value="true">{t("true")}</option>
-          <option value="false">{t("false")}</option>
-        </select>
-      );
-    }
-
-    if (kind === "date") {
-      return (
-        <input
-          className="input"
-          type="date"
-          value={value}
-          onChange={(e) =>
-            updateItemAttribute(itemIndex, attribute.id, e.target.value)
-          }
-        />
-      );
-    }
-
-    if (kind === "datetime") {
-      return (
-        <input
-          className="input"
-          type="datetime-local"
-          value={value}
-          onChange={(e) =>
-            updateItemAttribute(itemIndex, attribute.id, e.target.value)
-          }
-        />
-      );
-    }
-
-    return (
-      <input
-        className="input"
-        type="text"
-        value={value}
-        onChange={(e) =>
-          updateItemAttribute(itemIndex, attribute.id, e.target.value)
-        }
-        placeholder={
-          unitLabel
-            ? t("enterFieldWithUnit", { field: attribute.name, unit: unitLabel })
-            : t("enterField", { field: attribute.name })
-        }
-      />
-    );
-  };
-
   const handleSubmit = async () => {
     const validationStepOne = validateStepOne();
+
     if (validationStepOne) {
       setError(validationStepOne);
       setStep(1);
@@ -567,29 +583,59 @@ export default function Lot_Auction() {
       setError("");
       setSuccess("");
 
+      const mainCategoryId = Number(categoryId || lotItems[0]?.categoryId || 0);
+
       const payload = {
         title: lotTitle.trim(),
         description: description.trim(),
-        categoryId: Number(categoryId),
+        categoryId: mainCategoryId,
         startingPrice: Number(startingPrice),
         bidIncrement: Number(effectiveBidIncrement),
         startDate: toApiDateTime(startDate),
         endDate: toApiDateTime(effectiveEndDate),
-        image: headImageFile || undefined,
-        items: items.map((item) => ({
-          title: String(item.title || "").trim(),
-          count: Number(item.count),
-          description: description.trim(),
-          warrantyInfo: String(item.warrantyInfo || "").trim(),
-          condition: Number(item.condition),
-          categoryId: Number(categoryId),
-          image: item.imageFile || undefined,
-          attributes: buildItemAttributes(item),
+        image: headImageFile,
+        items: lotItems.map((item, index) => ({
+          title: item.title.trim() || `${lotTitle.trim()} Item ${index + 1}`,
+          description: item.description.trim() || description.trim(),
+          count: Number(item.count || 1),
+          warrantyInfo: "N/A",
+          condition: 1,
+          categoryId: Number(item.categoryId),
+          image: item.imageFile,
+          images: [item.imageFile].filter(Boolean),
         })),
       };
-
+      console.log("LOT AUCTION PAYLOAD BEFORE SEND:", {
+  title: payload.title,
+  description: payload.description,
+  categoryId: payload.categoryId,
+  startingPrice: payload.startingPrice,
+  bidIncrement: payload.bidIncrement,
+  startDate: payload.startDate,
+  endDate: payload.endDate,
+  hasMainImage: payload.image instanceof File,
+  mainImageName: payload.image?.name,
+  mainImageType: payload.image?.type,
+  mainImageSize: payload.image?.size,
+  itemsCount: payload.items?.length || 0,
+  items: payload.items?.map((item, index) => ({
+    index,
+    title: item.title,
+    description: item.description,
+    count: item.count,
+    warrantyInfo: item.warrantyInfo,
+    condition: item.condition,
+    categoryId: item.categoryId,
+    hasImage: item.image instanceof File,
+    imageName: item.image?.name,
+    imageType: item.image?.type,
+    imageSize: item.image?.size,
+    imagesCount: item.images?.length || 0,
+  })),
+});
       const response = await createAuction(payload);
 
+      clearDraft();
       setSuccess(response?.message || t("lotAuctionCreatedSuccessfully"));
 
       setTimeout(() => {
@@ -613,11 +659,14 @@ export default function Lot_Auction() {
           box-sizing: border-box;
           font-family: Arial, Helvetica, sans-serif;
         }
+
         .lot-auction * { box-sizing: border-box; }
+
         .lot-auction .container-inner {
-          width: min(920px, 92%);
+          width: min(960px, 92%);
           margin: 0 auto;
         }
+
         .lot-auction .title {
           text-align: center;
           color: #023E8A;
@@ -625,6 +674,7 @@ export default function Lot_Auction() {
           font-weight: 700;
           margin: 0 0 24px;
         }
+
         .lot-auction .section {
           background: #fff;
           border-radius: 18px;
@@ -632,12 +682,14 @@ export default function Lot_Auction() {
           box-shadow: 0 8px 24px rgba(0,0,0,0.06);
           margin-bottom: 18px;
         }
+
         .lot-auction .section-title {
           color: #1f2a37;
           font-size: 18px;
           font-weight: 700;
           margin: 0 0 14px;
         }
+
         .lot-auction .image-preview {
           width: 180px;
           height: 180px;
@@ -647,11 +699,23 @@ export default function Lot_Auction() {
           margin-bottom: 14px;
           border: 1px solid #e7e7e7;
         }
+
+        .lot-auction .item-image-preview {
+          width: 130px;
+          height: 130px;
+          object-fit: cover;
+          border-radius: 14px;
+          display: block;
+          margin-bottom: 12px;
+          border: 1px solid #e7e7e7;
+        }
+
         .lot-auction .image-upload,
+        .lot-auction .item-image-upload,
         .lot-auction .save-btn,
+        .lot-auction .back-btn,
         .lot-auction .add-btn,
-        .lot-auction .remove-btn,
-        .lot-auction .back-btn {
+        .lot-auction .remove-btn {
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -661,14 +725,24 @@ export default function Lot_Auction() {
           border-radius: 12px;
           transition: 0.2s ease;
         }
+
         .lot-auction .image-upload {
           background: #fff;
           color: #6b7280;
           border: 2px dashed #d1d5db;
           width: 100%;
-          min-height: 140px;
+          min-height: 120px;
           margin-bottom: 14px;
         }
+
+        .lot-auction .item-image-upload {
+          background: #eef6ff;
+          color: #023E8A;
+          border: 1px dashed #9ec5fe;
+          padding: 12px 16px;
+          margin-bottom: 14px;
+        }
+
         .lot-auction .input,
         .lot-auction .textarea {
           width: 100%;
@@ -680,32 +754,25 @@ export default function Lot_Auction() {
           margin-bottom: 14px;
           background: #fff;
         }
+
         .lot-auction .textarea {
           min-height: 110px;
           resize: vertical;
         }
-        .lot-auction .condition {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 16px;
-          margin-top: 8px;
+
+        .lot-auction .inline-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
         }
-        .lot-auction .condition label {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          background: #fafafa;
-          border: 1px solid #ececec;
-          padding: 10px 14px;
-          border-radius: 10px;
-          cursor: pointer;
-        }
+
         .lot-auction .tags {
           display: flex;
           flex-wrap: wrap;
           gap: 10px;
           margin-bottom: 14px;
         }
+
         .lot-auction .tag {
           padding: 10px 16px;
           border-radius: 12px;
@@ -715,22 +782,34 @@ export default function Lot_Auction() {
           font-weight: 600;
           font-size: 14px;
         }
+
         .lot-auction .info-box {
           margin-top: 20px;
           color: #023E8A;
           font-weight: 600;
           line-height: 1.7;
         }
+
         .lot-auction .error-note {
-          color: red;
-          margin-bottom: 20px;
+          background: #fff1f0;
+          color: #cf1322;
+          border: 1px solid #ffa39e;
+          border-radius: 12px;
+          padding: 12px 14px;
+          margin-bottom: 14px;
           font-weight: 600;
         }
+
         .lot-auction .success-note {
-          color: green;
-          margin-bottom: 20px;
+          background: #f6ffed;
+          color: #237804;
+          border: 1px solid #b7eb8f;
+          border-radius: 12px;
+          padding: 12px 14px;
+          margin-bottom: 14px;
           font-weight: 600;
         }
+
         .lot-auction .file-error {
           background: #fff1f0;
           color: #cf1322;
@@ -739,6 +818,7 @@ export default function Lot_Auction() {
           padding: 12px 14px;
           margin-bottom: 14px;
         }
+
         .lot-auction .save-btn {
           background: #023E8A;
           color: white;
@@ -746,35 +826,62 @@ export default function Lot_Auction() {
           min-height: 58px;
           font-size: 17px;
         }
-        .lot-auction .add-btn,
-        .lot-auction .back-btn,
-        .lot-auction .remove-btn {
+
+        .lot-auction .save-btn:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+        }
+
+        .lot-auction .back-btn {
           background: #eef2ff;
           color: #023E8A;
           padding: 12px 18px;
         }
-        .lot-auction .actions {
-          display: flex;
-          gap: 12px;
-          flex-wrap: wrap;
+
+        .lot-auction .add-btn {
+          background: #023E8A;
+          color: white;
+          padding: 12px 18px;
+          margin-bottom: 18px;
         }
-        .lot-auction .attribute-box {
-          border: 1px solid #ececec;
-          border-radius: 14px;
-          padding: 14px;
-          margin-bottom: 14px;
+
+        .lot-auction .remove-btn {
+          background: #fff1f0;
+          color: #cf1322;
+          border: 1px solid #ffa39e;
+          padding: 10px 14px;
+        }
+
+        .lot-auction .item-card {
+          border: 1px solid #e5e7eb;
+          border-radius: 16px;
+          padding: 18px;
+          margin-bottom: 16px;
           background: #fcfcfc;
         }
-        .lot-auction .attribute-title {
-          font-size: 14px;
-          font-weight: 700;
-          color: #1f1f1f;
-          margin-bottom: 8px;
+
+        .lot-auction .item-card-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 14px;
         }
-        .lot-auction .attribute-meta {
-          font-size: 12px;
-          color: #6c757d;
-          margin-bottom: 10px;
+
+        .lot-auction .item-title {
+          font-size: 18px;
+          font-weight: 800;
+          color: #023E8A;
+        }
+
+        @media (max-width: 768px) {
+          .lot-auction .inline-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .lot-auction .title {
+            font-size: 28px;
+          }
         }
       `}</style>
 
@@ -795,7 +902,9 @@ export default function Lot_Auction() {
               )}
 
               <label className="image-upload">
-                {t("headImage")}
+                {headImagePreview
+                  ? t("changeImage", { defaultValue: "Change main image" })
+                  : t("headImage", { defaultValue: "Upload main image" })}
                 <input
                   type="file"
                   hidden
@@ -816,11 +925,22 @@ export default function Lot_Auction() {
               <select
                 className="input"
                 value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
+                onChange={(e) => {
+                  const nextCategory = e.target.value;
+                  setCategoryId(nextCategory);
+                  setLotItems((prev) =>
+                    prev.map((item) => ({
+                      ...item,
+                      categoryId: item.categoryId || nextCategory,
+                    }))
+                  );
+                }}
                 disabled={loadingCategories}
               >
                 <option value="">
-                  {loadingCategories ? t("loadingCategories") : t("selectCategory")}
+                  {loadingCategories
+                    ? t("loadingCategories")
+                    : t("selectCategory", { defaultValue: "Select main category" })}
                 </option>
                 {categories.map((category) => (
                   <option key={category.id} value={category.id}>
@@ -828,106 +948,7 @@ export default function Lot_Auction() {
                   </option>
                 ))}
               </select>
-            </div>
 
-            {items.map((item, index) => (
-              <div key={index} className="section">
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 12,
-                    marginBottom: 14,
-                  }}
-                >
-                  <h3 className="section-title" style={{ margin: 0 }}>
-                    {t("itemIndexed", { index: index + 1 })}
-                  </h3>
-
-                  {items.length > 1 ? (
-                    <button
-                      type="button"
-                      className="remove-btn"
-                      onClick={() => removeItem(index)}
-                    >
-                      {t("remove")}
-                    </button>
-                  ) : null}
-                </div>
-
-                {item.imagePreview && (
-                  <img
-                    src={item.imagePreview}
-                    className="image-preview"
-                    alt={t("headPreview")}
-                  />
-                )}
-
-                <label className="image-upload">
-                  {t("addImage")}
-                  <input
-                    type="file"
-                    hidden
-                    accept="image/png, image/jpeg, image/jpg"
-                    onChange={(e) => handleItemImageUpload(e, index)}
-                  />
-                </label>
-
-                {item.error && <div className="file-error">{item.error}</div>}
-
-                <input
-                  className="input"
-                  placeholder={t("title")}
-                  value={item.title}
-                  onChange={(e) => updateItem(index, "title", e.target.value)}
-                />
-
-                <input
-                  className="input"
-                  type="number"
-                  min="1"
-                  placeholder={t("count")}
-                  value={item.count}
-                  onChange={(e) =>
-                    updateItem(index, "count", normalizeIntegerInput(e.target.value))
-                  }
-                />
-
-                <input
-                  className="input"
-                  placeholder={t("warrantyInfoUpper")}
-                  value={item.warrantyInfo}
-                  onChange={(e) =>
-                    updateItem(index, "warrantyInfo", e.target.value)
-                  }
-                />
-
-                <div className="condition">
-                  {CONDITION_OPTIONS.map((cond) => (
-                    <label key={`${index}-${cond.value}`}>
-                      <input
-                        type="radio"
-                        name={`cond-${index}`}
-                        checked={String(item.condition) === String(cond.value)}
-                        onChange={() =>
-                          updateItem(index, "condition", String(cond.value))
-                        }
-                      />
-                      {getConditionLabel(cond.label)}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ))}
-
-            <div className="actions" style={{ marginBottom: 18 }}>
-              <button className="add-btn" onClick={addItem} type="button">
-                {t("addItem")}
-              </button>
-            </div>
-
-            <div className="section">
               <h3 className="section-title">{t("lotDescription")}</h3>
 
               <textarea
@@ -940,51 +961,113 @@ export default function Lot_Auction() {
             </div>
 
             <div className="section">
-              <h3 className="section-title">{t("categoryAttributes")}</h3>
+              <div className="item-card-header">
+                <h3 className="section-title" style={{ margin: 0 }}>
+                  {t("lotItems", { defaultValue: "Lot Items" })}
+                </h3>
 
-              {loadingAttributes ? (
-                <div className="info-box">{t("loadingCategoryAttributes")}</div>
-              ) : !categoryId ? (
-                <div className="info-box">{t("selectCategoryAttributes")}</div>
-              ) : categoryAttributes.length === 0 ? (
-                <div className="info-box">{t("noAttributesFound")}</div>
-              ) : (
-                items.map((item, itemIndex) => (
-                  <div key={`attrs-${itemIndex}`} style={{ marginBottom: 20 }}>
-                    <h4
-                      style={{
-                        marginBottom: 14,
-                        color: "#023E8A",
-                        fontSize: 16,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {t("itemAttributesIndexed", { index: itemIndex + 1 })}
-                    </h4>
+                <button className="add-btn" type="button" onClick={addItem}>
+                  + {t("addItem", { defaultValue: "Add Item" })}
+                </button>
+              </div>
 
-                    {categoryAttributes.map((attribute) => (
-                      <div
-                        key={`${itemIndex}-${attribute.id}`}
-                        className="attribute-box"
+              {lotItems.map((item, index) => (
+                <div className="item-card" key={item.localId}>
+                  <div className="item-card-header">
+                    <div className="item-title">
+                      {t("item", { defaultValue: "Item" })} {index + 1}
+                    </div>
+
+                    {lotItems.length > 1 && (
+                      <button
+                        type="button"
+                        className="remove-btn"
+                        onClick={() => removeItem(item.localId)}
                       >
-                        <div className="attribute-title">
-                          {attribute.name}
-                          {attribute.isRequired ? " *" : ""}
-                        </div>
-
-                        <div className="attribute-meta">
-                          {t("type")}: {attribute.dataType}
-                          {attribute.unit
-                            ? ` | ${t("unit")}: ${getUnitLabel(attribute.unit)}`
-                            : ""}
-                        </div>
-
-                        {renderAttributeInput(attribute, item, itemIndex)}
-                      </div>
-                    ))}
+                        {t("remove", { defaultValue: "Remove" })}
+                      </button>
+                    )}
                   </div>
-                ))
-              )}
+
+                  {item.imagePreview && (
+                    <img
+                      src={item.imagePreview}
+                      className="item-image-preview"
+                      alt={`${t("item", { defaultValue: "Item" })} ${index + 1}`}
+                    />
+                  )}
+
+                  <label className="item-image-upload">
+                    {item.imagePreview
+                      ? t("changeImage", { defaultValue: "Change image" })
+                      : t("uploadItemImage", { defaultValue: "Upload item image" })}
+                    <input
+                      type="file"
+                      hidden
+                      accept="image/png, image/jpeg, image/jpg"
+                      onChange={(e) => handleItemImageUpload(item.localId, e)}
+                    />
+                  </label>
+
+                  <div className="inline-grid">
+                    <input
+                      className="input"
+                      placeholder={t("itemTitleOptional", {
+                        defaultValue: "Item title (optional)",
+                      })}
+                      value={item.title}
+                      onChange={(e) =>
+                        updateItem(item.localId, { title: e.target.value })
+                      }
+                    />
+
+                    <select
+                      className="input"
+                      value={item.categoryId}
+                      onChange={(e) =>
+                        updateItem(item.localId, { categoryId: e.target.value })
+                      }
+                      disabled={loadingCategories}
+                    >
+                      <option value="">
+                        {loadingCategories
+                          ? t("loadingCategories")
+                          : t("selectCategory")}
+                      </option>
+                      {categories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <textarea
+                    className="textarea"
+                    maxLength={500}
+                    placeholder={t("itemDescriptionOptional", {
+                      defaultValue: "Item description (optional)",
+                    })}
+                    value={item.description}
+                    onChange={(e) =>
+                      updateItem(item.localId, { description: e.target.value })
+                    }
+                  />
+
+                  <input
+                    className="input"
+                    type="number"
+                    min="1"
+                    placeholder={t("count", { defaultValue: "Count" })}
+                    value={item.count}
+                    onChange={(e) =>
+                      updateItem(item.localId, {
+                        count: normalizeIntegerInput(e.target.value) || "1",
+                      })
+                    }
+                  />
+                </div>
+              ))}
             </div>
 
             {error && <div className="error-note">{error}</div>}
@@ -1006,9 +1089,12 @@ export default function Lot_Auction() {
                 className="input"
                 type="number"
                 min="1"
+                max={MAX_STARTING_PRICE}
                 placeholder={t("enterStartingPrice")}
                 value={startingPrice}
-                onChange={(e) => setStartingPrice(normalizeNumberInput(e.target.value))}
+                onChange={(e) =>
+                  setStartingPrice(normalizeNumberInput(e.target.value))
+                }
               />
             </div>
 
@@ -1045,9 +1131,12 @@ export default function Lot_Auction() {
                 <input
                   type="number"
                   min="1"
+                  max={MAX_BID_INCREMENT}
                   className="input"
                   value={customBid}
-                  onChange={(e) => setCustomBid(normalizeIntegerInput(e.target.value))}
+                  onChange={(e) =>
+                    setCustomBid(normalizeIntegerInput(e.target.value))
+                  }
                   placeholder={t("enterCustomBidIncrement")}
                 />
               )}

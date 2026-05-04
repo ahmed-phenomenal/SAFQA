@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import icon from "../../assets/2.png";
@@ -128,6 +128,7 @@ export default function AuctionDetails() {
   const { t, i18n } = useTranslation();
   const isArabic = i18n.language === "ar";
   const location = useLocation();
+  const navigate = useNavigate();
 
   const params = new URLSearchParams(location.search);
   const auctionId = params.get("auctionId") || params.get("id");
@@ -212,6 +213,14 @@ export default function AuctionDetails() {
   }, [auction?.endDate]);
 
   const firstItem = useMemo(() => auction?.items?.[0] || null, [auction]);
+
+const goToSellerReviews = () => {
+  if (!auction?.sellerId) return;
+
+  const realAuctionId = Number(auctionId || auction.id || 0);
+
+  navigate(`/seller-review?sellerId=${auction.sellerId}&auctionId=${realAuctionId}`);
+};
 
   const closeAllPopups = () => {
     setDepositPopup(false);
@@ -628,6 +637,13 @@ export default function AuctionDetails() {
           align-items: center;
           gap: 12px;
           margin-top: 16px;
+          padding: 12px;
+          border-radius: 14px;
+          transition: 0.2s ease;
+        }
+
+        .auction-seller.clickable {
+          cursor: pointer;
         }
 
         .auction-seller-avatar {
@@ -656,6 +672,13 @@ export default function AuctionDetails() {
           color: #6b7280;
           font-size: 13px;
           font-weight: 800;
+        }
+
+        .auction-seller-hint {
+          margin: 3px 0 0;
+          color: #64748b;
+          font-size: 12px;
+          font-weight: 700;
         }
 
         .auction-bid-panel {
@@ -1011,7 +1034,15 @@ export default function AuctionDetails() {
             </>
           ) : null}
 
-          <div className="auction-seller">
+          <div
+            className={`auction-seller ${auction.sellerId ? "clickable" : ""}`}
+            role="button"
+            tabIndex={auction.sellerId ? 0 : -1}
+            onClick={goToSellerReviews}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") goToSellerReviews();
+            }}
+          >
             {auction.storeLogo ? (
               <img
                 src={auction.storeLogo}
@@ -1027,6 +1058,11 @@ export default function AuctionDetails() {
             <div>
               <p className="auction-seller-label">{t("seller", "Seller")}</p>
               <p className="auction-seller-name">{auction.storeName}</p>
+              {auction.sellerId ? (
+                <p className="auction-seller-hint">
+                  {t("viewSellerReviews", "View seller reviews")}
+                </p>
+              ) : null}
             </div>
           </div>
 

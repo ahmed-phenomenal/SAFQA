@@ -4,17 +4,104 @@ import { useTranslation } from "react-i18next";
 import icon from "../../../assets/2.png";
 import { useTranslatedApiData } from "../../../Hooks/useTranslatedApiData";
 import { useAutoTranslatedText } from "../../../Hooks/useAutoTranslatedText";
-import {
-  ATTRIBUTE_DATA_TYPES,
-  ATTRIBUTE_UNITS,
-  CONDITION_OPTIONS,
-  createAuction,
-  getAuctionCategories,
-  getCategoryAttributes,
-} from "../../../API/createAuction";
+import { createAuction, getAuctionCategories } from "../../../API/createAuction";
 
 const BID_OPTIONS = ["100", "300", "500", "Specify"];
 const DURATION_OPTIONS = ["24 hours", "3 days", "7 days", "Specify"];
+const DRAFT_TTL_MS = 15 * 60 * 1000;
+const MAX_STARTING_PRICE = 999999999;
+const MAX_BID_INCREMENT = 2147483647;
+
+const getCurrentAccountKey = () => {
+  return String(
+    localStorage.getItem("currentUserEmail") ||
+      sessionStorage.getItem("currentUserEmail") ||
+      localStorage.getItem("pendingEmail") ||
+      sessionStorage.getItem("pendingEmail") ||
+      "guest"
+  )
+    .trim()
+    .toLowerCase();
+};
+
+const DRAFT_KEY = `single_auction_draft:${getCurrentAccountKey()}`;
+
+const readDraft = () => {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw);
+    if (!parsed?.expiresAt || Date.now() > parsed.expiresAt) {
+      localStorage.removeItem(DRAFT_KEY);
+      return null;
+    }
+
+    return parsed?.draft || null;
+  } catch {
+    return null;
+  }
+};
+
+const saveDraft = (draft) => {
+  try {
+    localStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({
+        expiresAt: Date.now() + DRAFT_TTL_MS,
+        draft,
+      })
+    );
+  } catch {
+    //
+  }
+};
+
+const clearDraft = () => {
+  try {
+    localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    //
+  }
+};
+
+const fileToDataUrl = (file) =>
+  new Promise((resolve) => {
+    if (!file) {
+      resolve("");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => resolve("");
+    reader.readAsDataURL(file);
+  });
+
+const dataUrlToFile = (
+  dataUrl,
+  fileName = "head-image.png",
+  mimeType = "image/png"
+) => {
+  try {
+    if (!dataUrl || !dataUrl.includes(",")) return null;
+
+    const [header, base64] = dataUrl.split(",");
+    const detectedMime =
+      header.match(/data:(.*?);base64/)?.[1] || mimeType || "image/png";
+
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+
+    return new File([bytes], fileName, { type: detectedMime });
+  } catch {
+    return null;
+  }
+};
 
 const formatDateTimeLocalInput = (date) => {
   const d = new Date(date);
@@ -64,45 +151,19 @@ const getErrorMessage = (error, fallback = "Something went wrong.") => {
   );
 };
 
-const isEmptyAttributeValue = (value) => {
-  return value === undefined || value === null || String(value).trim() === "";
-};
-
 const normalizeNumberInput = (value) =>
   String(value || "").replace(/[^\d.]/g, "");
 
-const normalizeIntegerInput = (value) =>
-  String(value || "").replace(/\D/g, "");
-
-const getAttributeInputKind = (attribute) => {
-  const dataType = Number(attribute?.dataType || 0);
-
-  if (dataType === ATTRIBUTE_DATA_TYPES.TEXT) return "text";
-  if (dataType === ATTRIBUTE_DATA_TYPES.NUMBER) return "number";
-  if (dataType === ATTRIBUTE_DATA_TYPES.BOOLEAN) return "boolean";
-  if (dataType === ATTRIBUTE_DATA_TYPES.DATE) return "date";
-  if (dataType === ATTRIBUTE_DATA_TYPES.DATETIME) return "datetime";
-
-  return "text";
-};
-
-const getConditionTranslationKey = (label) => {
-  const value = String(label || "").trim().toLowerCase();
-
-  if (value === "new") return "conditionNew";
-  if (value === "used") return "conditionUsed";
-  if (value === "refurbished") return "conditionRefurbished";
-
-  return "";
-};
+const normalizeIntegerInput = (value) => String(value || "").replace(/\D/g, "");
 
 export default function Single_Auction() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const cachedDraft = readDraft();
 
   const [favicon] = useState(icon);
 
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(Number(cachedDraft?.step || 1));
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -110,50 +171,60 @@ export default function Single_Auction() {
   const { translatedText: translatedSuccess } = useAutoTranslatedText(success);
 
   const [loadingCategories, setLoadingCategories] = useState(true);
-  const [loadingAttributes, setLoadingAttributes] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const [categories, setCategories] = useState([]);
-  const [attributes, setAttributes] = useState([]);
-
   const { translatedData: translatedCategories } =
     useTranslatedApiData(categories);
-  const { translatedData: translatedAttributes } =
-    useTranslatedApiData(attributes);
 
   const displayCategories = Array.isArray(translatedCategories)
     ? translatedCategories
     : categories;
 
-  const displayAttributes = Array.isArray(translatedAttributes)
-    ? translatedAttributes
-    : attributes;
-
   const [fieldErrors, setFieldErrors] = useState({});
 
-  const [headImageFile, setHeadImageFile] = useState(null);
-  const [headPreview, setHeadPreview] = useState("");
+  const restoredFile = cachedDraft?.headImage?.dataUrl
+    ? dataUrlToFile(
+        cachedDraft.headImage.dataUrl,
+        cachedDraft.headImage.name,
+        cachedDraft.headImage.type
+      )
+    : null;
+
+  const [headImageFile, setHeadImageFile] = useState(restoredFile);
+  const [headPreview, setHeadPreview] = useState(
+    cachedDraft?.headImage?.dataUrl || ""
+  );
+  const [headImageDataUrl, setHeadImageDataUrl] = useState(
+    cachedDraft?.headImage?.dataUrl || ""
+  );
+  const [headImageMeta, setHeadImageMeta] = useState({
+    name: cachedDraft?.headImage?.name || "head-image.png",
+    type: cachedDraft?.headImage?.type || "image/png",
+  });
   const [headError, setHeadError] = useState("");
 
-  const [itemTitle, setItemTitle] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [itemCount, setItemCount] = useState("1");
-  const [warranty, setWarranty] = useState("");
-  const [description, setDescription] = useState("");
-  const [condition, setCondition] = useState(
-    String(CONDITION_OPTIONS?.[0]?.value ?? 1)
-  );
+  const [itemTitle, setItemTitle] = useState(cachedDraft?.itemTitle || "");
+  const [categoryId, setCategoryId] = useState(cachedDraft?.categoryId || "");
+  const [description, setDescription] = useState(cachedDraft?.description || "");
 
-  const [attributeValues, setAttributeValues] = useState({});
-
-  const [startingPrice, setStartingPrice] = useState("");
-  const [selectedBid, setSelectedBid] = useState("100");
-  const [customBid, setCustomBid] = useState("");
-  const [startDate, setStartDate] = useState(() =>
-    formatDateTimeLocalInput(new Date(Date.now() + 5 * 60 * 1000))
+  const [startingPrice, setStartingPrice] = useState(
+    cachedDraft?.startingPrice || ""
   );
-  const [selectedDuration, setSelectedDuration] = useState("24 hours");
-  const [customEndDate, setCustomEndDate] = useState("");
+  const [selectedBid, setSelectedBid] = useState(
+    cachedDraft?.selectedBid || "100"
+  );
+  const [customBid, setCustomBid] = useState(cachedDraft?.customBid || "");
+  const [startDate, setStartDate] = useState(
+    cachedDraft?.startDate ||
+      formatDateTimeLocalInput(new Date(Date.now() + 5 * 60 * 1000))
+  );
+  const [selectedDuration, setSelectedDuration] = useState(
+    cachedDraft?.selectedDuration || "24 hours"
+  );
+  const [customEndDate, setCustomEndDate] = useState(
+    cachedDraft?.customEndDate || ""
+  );
 
   useEffect(() => {
     document.title = t("singleAuctionDocTitle");
@@ -201,49 +272,8 @@ export default function Single_Auction() {
   }, [t]);
 
   useEffect(() => {
-    let mounted = true;
-
-    const loadAttributes = async () => {
-      if (!categoryId) {
-        setAttributes([]);
-        setAttributeValues({});
-        return;
-      }
-
-      try {
-        setLoadingAttributes(true);
-        setError("");
-        setFieldErrors((prev) => ({
-          ...prev,
-          attributes: "",
-        }));
-
-        const data = await getCategoryAttributes(categoryId);
-
-        if (!mounted) return;
-
-        setAttributes(Array.isArray(data) ? data : []);
-        setAttributeValues({});
-      } catch (err) {
-        if (!mounted) return;
-        setAttributes([]);
-        setAttributeValues({});
-        setError(getErrorMessage(err, t("failedToLoadCategoryAttributes")));
-      } finally {
-        if (mounted) setLoadingAttributes(false);
-      }
-    };
-
-    loadAttributes();
-
     return () => {
-      mounted = false;
-    };
-  }, [categoryId, t]);
-
-  useEffect(() => {
-    return () => {
-      if (headPreview) {
+      if (headPreview && headPreview.startsWith("blob:")) {
         URL.revokeObjectURL(headPreview);
       }
     };
@@ -263,6 +293,41 @@ export default function Single_Auction() {
     return addHours(startDate, hours);
   }, [selectedDuration, customEndDate, startDate]);
 
+  useEffect(() => {
+    saveDraft({
+      step,
+      itemTitle,
+      categoryId,
+      description,
+      startingPrice,
+      selectedBid,
+      customBid,
+      startDate,
+      selectedDuration,
+      customEndDate,
+      headImage: headImageDataUrl
+        ? {
+            dataUrl: headImageDataUrl,
+            name: headImageMeta.name,
+            type: headImageMeta.type,
+          }
+        : null,
+    });
+  }, [
+    step,
+    itemTitle,
+    categoryId,
+    description,
+    startingPrice,
+    selectedBid,
+    customBid,
+    startDate,
+    selectedDuration,
+    customEndDate,
+    headImageDataUrl,
+    headImageMeta,
+  ]);
+
   const clearFieldError = (fieldName) => {
     setFieldErrors((prev) => ({
       ...prev,
@@ -270,60 +335,47 @@ export default function Single_Auction() {
     }));
   };
 
-  const handleImageUpload = (e) => {
+  const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const allowed = ["image/jpeg", "image/jpg", "image/png"];
 
-    if (!allowed.includes(file.type)) {
+    if (!allowed.includes(String(file.type || "").toLowerCase())) {
       setHeadError(t("onlyJpgPng"));
       return;
     }
 
-    if (headPreview) {
+    if (headPreview && headPreview.startsWith("blob:")) {
       URL.revokeObjectURL(headPreview);
     }
 
+    const objectUrl = URL.createObjectURL(file);
+    const dataUrl = await fileToDataUrl(file);
+
     setHeadError("");
     setHeadImageFile(file);
-    setHeadPreview(URL.createObjectURL(file));
-  };
-
-  const handleAttributeChange = (attributeId, value) => {
-    setAttributeValues((prev) => ({
-      ...prev,
-      [attributeId]: value,
-    }));
-
-    clearFieldError(`attribute_${attributeId}`);
-    clearFieldError("attributes");
-  };
-
-  const getUnitLabel = (unit) => {
-    return ATTRIBUTE_UNITS?.[Number(unit)] || "";
+    setHeadPreview(objectUrl);
+    setHeadImageDataUrl(dataUrl);
+    setHeadImageMeta({
+      name: file.name || "head-image.png",
+      type: file.type || "image/png",
+    });
+    clearFieldError("headImage");
   };
 
   const validateStepOne = () => {
     const nextErrors = {};
 
+    if (!headImageFile) {
+      nextErrors.headImage = t("headImageRequired", {
+        defaultValue: "Head image is required",
+      });
+    }
+
     if (!itemTitle.trim()) nextErrors.itemTitle = t("titleRequired");
     if (!categoryId) nextErrors.categoryId = t("categoryRequired");
-    if (!itemCount || Number(itemCount) <= 0) {
-      nextErrors.itemCount = t("countGreaterThanZero");
-    }
-    if (!warranty.trim()) nextErrors.warranty = t("warrantyRequired");
     if (!description.trim()) nextErrors.description = t("descriptionRequired");
-    if (!condition) nextErrors.condition = t("conditionRequired");
-
-    displayAttributes.forEach((attr) => {
-      const value = attributeValues[attr.id];
-      if (attr.isRequired && isEmptyAttributeValue(value)) {
-        nextErrors[`attribute_${attr.id}`] = t("fieldRequired", {
-          field: attr.name,
-        });
-      }
-    });
 
     setFieldErrors((prev) => ({
       ...prev,
@@ -354,8 +406,16 @@ export default function Single_Auction() {
       nextErrors.startingPrice = t("startingPriceGreaterThanZero");
     }
 
+    if (startingPriceNumber > MAX_STARTING_PRICE) {
+      nextErrors.startingPrice = `Maximum allowed is ${MAX_STARTING_PRICE}`;
+    }
+
     if (!Number.isFinite(bidIncrementNumber) || bidIncrementNumber <= 0) {
       nextErrors.bidIncrement = t("bidIncrementGreaterThanZero");
+    }
+
+    if (bidIncrementNumber > MAX_BID_INCREMENT) {
+      nextErrors.bidIncrement = `Maximum allowed is ${MAX_BID_INCREMENT}`;
     }
 
     setFieldErrors((prev) => ({
@@ -380,111 +440,6 @@ export default function Single_Auction() {
     setStep(2);
   };
 
-  const applyBackendFieldErrors = (backendData) => {
-    const errors = backendData?.errors;
-    if (!errors || typeof errors !== "object") return false;
-
-    const mapped = {};
-    let shouldReturnToStepOne = false;
-
-    Object.entries(errors).forEach(([key, value]) => {
-      const message = Array.isArray(value)
-        ? String(value.find(Boolean) || "").trim()
-        : String(value || "").trim();
-
-      if (!message) return;
-
-      const normalizedKey = String(key).toLowerCase();
-
-      if (normalizedKey.includes("condition")) {
-        mapped.condition = message;
-        shouldReturnToStepOne = true;
-      } else if (
-        normalizedKey.includes("title") &&
-        normalizedKey.includes("items")
-      ) {
-        mapped.itemTitle = message;
-        shouldReturnToStepOne = true;
-      } else if (normalizedKey === "title") {
-        mapped.itemTitle = message;
-        shouldReturnToStepOne = true;
-      } else if (normalizedKey.includes("categoryid")) {
-        mapped.categoryId = message;
-        shouldReturnToStepOne = true;
-      } else if (normalizedKey.includes("count")) {
-        mapped.itemCount = message;
-        shouldReturnToStepOne = true;
-      } else if (normalizedKey.includes("warranty")) {
-        mapped.warranty = message;
-        shouldReturnToStepOne = true;
-      } else if (
-        normalizedKey.includes("description") &&
-        normalizedKey.includes("items")
-      ) {
-        mapped.description = message;
-        shouldReturnToStepOne = true;
-      } else if (normalizedKey.includes("attribute")) {
-        mapped.attributes = message;
-        shouldReturnToStepOne = true;
-      } else if (normalizedKey.includes("items")) {
-        mapped.attributes = message;
-        shouldReturnToStepOne = true;
-      } else if (normalizedKey.includes("startingprice")) {
-        mapped.startingPrice = message;
-      } else if (normalizedKey.includes("bidincrement")) {
-        mapped.bidIncrement = message;
-      } else if (normalizedKey.includes("startdate")) {
-        mapped.startDate = message;
-      } else if (normalizedKey.includes("enddate")) {
-        mapped.endDate = message;
-      }
-    });
-
-    if (!Object.keys(mapped).length) return false;
-
-    setFieldErrors((prev) => ({
-      ...prev,
-      ...mapped,
-    }));
-
-    if (shouldReturnToStepOne) {
-      setStep(1);
-    }
-
-    return true;
-  };
-
-  const buildItemAttributes = () => {
-    return attributes
-      .map((attr) => {
-        const rawValue = attributeValues[attr.id];
-
-        if (isEmptyAttributeValue(rawValue)) {
-          return null;
-        }
-
-        const kind = getAttributeInputKind(attr);
-        let finalValue = rawValue;
-
-        if (kind === "datetime") {
-          finalValue = toApiDateTime(rawValue);
-        } else if (kind === "date") {
-          finalValue = String(rawValue).trim();
-        } else if (kind === "boolean") {
-          finalValue =
-            String(rawValue).trim().toLowerCase() === "true" ? "true" : "false";
-        } else {
-          finalValue = String(rawValue).trim();
-        }
-
-        return {
-          categoryAttributeId: Number(attr.id),
-          value: finalValue,
-        };
-      })
-      .filter(Boolean);
-  };
-
   const handleSubmit = async () => {
     setError("");
     setSuccess("");
@@ -500,8 +455,6 @@ export default function Single_Auction() {
     try {
       setSubmitting(true);
 
-      const builtAttributes = buildItemAttributes();
-
       const payload = {
         title: itemTitle.trim(),
         description: description.trim(),
@@ -510,23 +463,51 @@ export default function Single_Auction() {
         bidIncrement: Number(effectiveBidIncrement),
         startDate: toApiDateTime(startDate),
         endDate: toApiDateTime(effectiveEndDate),
-        image: headImageFile || undefined,
+        image: headImageFile,
         items: [
           {
             title: itemTitle.trim(),
-            count: Number(itemCount),
             description: description.trim(),
-            warrantyInfo: warranty.trim(),
-            condition: Number(condition),
+            count: 1,
+            warrantyInfo: "N/A",
+            condition: 1,
             categoryId: Number(categoryId),
-            image: undefined,
-            attributes: builtAttributes,
+            image: headImageFile,
+            images: [headImageFile],
           },
         ],
       };
-
+      console.log("SINGLE AUCTION PAYLOAD BEFORE SEND:", {
+  title: payload.title,
+  description: payload.description,
+  categoryId: payload.categoryId,
+  startingPrice: payload.startingPrice,
+  bidIncrement: payload.bidIncrement,
+  startDate: payload.startDate,
+  endDate: payload.endDate,
+  hasMainImage: payload.image instanceof File,
+  mainImageName: payload.image?.name,
+  mainImageType: payload.image?.type,
+  mainImageSize: payload.image?.size,
+  items: payload.items?.map((item, index) => ({
+    index,
+    title: item.title,
+    description: item.description,
+    count: item.count,
+    warrantyInfo: item.warrantyInfo,
+    condition: item.condition,
+    categoryId: item.categoryId,
+    hasImage: item.image instanceof File,
+    imageName: item.image?.name,
+    imageType: item.image?.type,
+    imageSize: item.image?.size,
+    imagesCount: item.images?.length || 0,
+  })),
+});
       const response = await createAuction(payload);
+      
 
+      clearDraft();
       setSuccess(response?.message || t("auctionCreatedSuccessfully"));
 
       navigate("/seller-history", {
@@ -536,13 +517,7 @@ export default function Single_Auction() {
         },
       });
     } catch (err) {
-      const handled = applyBackendFieldErrors(err?.response?.data);
-
-      if (handled) {
-        setError(t("reviewInvalidFields"));
-      } else {
-        setError(getErrorMessage(err, t("failedToCreateAuction")));
-      }
+      setError(getErrorMessage(err, t("failedToCreateAuction")));
     } finally {
       setSubmitting(false);
     }
@@ -559,89 +534,6 @@ export default function Single_Auction() {
     if (duration === "7 days") return t("duration7Days");
     if (duration === "Specify") return t("specify");
     return duration;
-  };
-
-  const renderAttributeField = (attribute) => {
-    const value = attributeValues[attribute.id] ?? "";
-    const unitLabel = getUnitLabel(attribute.unit);
-    const kind = getAttributeInputKind(attribute);
-
-    if (kind === "number") {
-      return (
-        <input
-          type="number"
-          className="single-auction-input"
-          value={value}
-          onChange={(e) =>
-            handleAttributeChange(
-              attribute.id,
-              normalizeNumberInput(e.target.value)
-            )
-          }
-          placeholder={
-            unitLabel
-              ? t("enterFieldWithUnit", {
-                  field: attribute.name,
-                  unit: unitLabel,
-                })
-              : t("enterField", { field: attribute.name })
-          }
-        />
-      );
-    }
-
-    if (kind === "boolean") {
-      return (
-        <select
-          className="single-auction-input"
-          value={value}
-          onChange={(e) => handleAttributeChange(attribute.id, e.target.value)}
-        >
-          <option value="">{t("select")}</option>
-          <option value="true">{t("true")}</option>
-          <option value="false">{t("false")}</option>
-        </select>
-      );
-    }
-
-    if (kind === "date") {
-      return (
-        <input
-          type="date"
-          className="single-auction-input"
-          value={value}
-          onChange={(e) => handleAttributeChange(attribute.id, e.target.value)}
-        />
-      );
-    }
-
-    if (kind === "datetime") {
-      return (
-        <input
-          type="datetime-local"
-          className="single-auction-input"
-          value={value}
-          onChange={(e) => handleAttributeChange(attribute.id, e.target.value)}
-        />
-      );
-    }
-
-    return (
-      <input
-        type="text"
-        className="single-auction-input"
-        value={value}
-        onChange={(e) => handleAttributeChange(attribute.id, e.target.value)}
-        placeholder={
-          unitLabel
-            ? t("enterFieldWithUnit", {
-                field: attribute.name,
-                unit: unitLabel,
-              })
-            : t("enterField", { field: attribute.name })
-        }
-      />
-    );
   };
 
   const renderFieldError = (name) => {
@@ -664,9 +556,7 @@ export default function Single_Auction() {
           font-family: Arial, Helvetica, sans-serif;
         }
 
-        .single-auction * {
-          box-sizing: border-box;
-        }
+        .single-auction * { box-sizing: border-box; }
 
         .single-auction-container {
           width: min(920px, 92%);
@@ -690,8 +580,7 @@ export default function Single_Auction() {
         }
 
         .single-auction-section-title,
-        .single-auction-description-label,
-        .single-auction-condition-title {
+        .single-auction-description-label {
           color: #023E8A;
           font-size: 18px;
           font-weight: 700;
@@ -758,23 +647,6 @@ export default function Single_Auction() {
           margin-bottom: 12px;
         }
 
-        .single-auction-condition {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 16px;
-        }
-
-        .single-auction-condition label {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          background: #fafafa;
-          border: 1px solid #ececec;
-          padding: 10px 14px;
-          border-radius: 10px;
-          cursor: pointer;
-        }
-
         .single-auction-tags {
           display: flex;
           flex-wrap: wrap;
@@ -828,27 +700,6 @@ export default function Single_Auction() {
           gap: 14px;
         }
 
-        .single-auction-attribute-item {
-          border: 1px solid #ececec;
-          border-radius: 14px;
-          padding: 14px;
-          margin-bottom: 12px;
-          background: #fcfcfc;
-        }
-
-        .single-auction-attribute-title {
-          font-size: 14px;
-          font-weight: 700;
-          color: #1f1f1f;
-          margin-bottom: 8px;
-        }
-
-        .single-auction-attribute-meta {
-          font-size: 12px;
-          color: #6c757d;
-          margin-bottom: 10px;
-        }
-
         .single-auction-actions {
           display: flex;
           gap: 12px;
@@ -877,12 +728,6 @@ export default function Single_Auction() {
           padding: 14px 24px;
         }
 
-        .single-auction-loading-note {
-          color: #6c757d;
-          font-size: 14px;
-          margin-bottom: 12px;
-        }
-
         .single-auction-field-error {
           color: #cf1322;
           font-size: 13px;
@@ -891,13 +736,8 @@ export default function Single_Auction() {
         }
 
         @media (max-width: 768px) {
-          .single-auction-inline-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .single-auction-title {
-            font-size: 28px;
-          }
+          .single-auction-inline-grid { grid-template-columns: 1fr; }
+          .single-auction-title { font-size: 28px; }
         }
       `}</style>
 
@@ -937,6 +777,7 @@ export default function Single_Auction() {
               {headError && (
                 <div className="single-auction-file-error">{headError}</div>
               )}
+              {renderFieldError("headImage")}
 
               <input
                 className="single-auction-input"
@@ -955,7 +796,6 @@ export default function Single_Auction() {
                 onChange={(e) => {
                   setCategoryId(e.target.value);
                   clearFieldError("categoryId");
-                  clearFieldError("attributes");
                 }}
                 disabled={loadingCategories}
               >
@@ -971,30 +811,6 @@ export default function Single_Auction() {
                 ))}
               </select>
               {renderFieldError("categoryId")}
-
-              <input
-                className="single-auction-input"
-                type="number"
-                min="1"
-                placeholder={t("count")}
-                value={itemCount}
-                onChange={(e) => {
-                  setItemCount(normalizeIntegerInput(e.target.value));
-                  clearFieldError("itemCount");
-                }}
-              />
-              {renderFieldError("itemCount")}
-
-              <input
-                className="single-auction-input"
-                placeholder={t("warrantyInfoUpper")}
-                value={warranty}
-                onChange={(e) => {
-                  setWarranty(e.target.value);
-                  clearFieldError("warranty");
-                }}
-              />
-              {renderFieldError("warranty")}
 
               <div className="single-auction-description-label">
                 {t("description")}
@@ -1013,77 +829,6 @@ export default function Single_Auction() {
                 {description.length}/500
               </div>
               {renderFieldError("description")}
-
-              <div className="single-auction-condition-title">
-                {t("condition")}
-              </div>
-              <div className="single-auction-condition">
-                {CONDITION_OPTIONS.map((item) => {
-                  const conditionKey = getConditionTranslationKey(item.label);
-
-                  return (
-                    <label key={item.value}>
-                      <input
-                        type="radio"
-                        name="condition"
-                        checked={String(condition) === String(item.value)}
-                        onChange={() => {
-                          setCondition(String(item.value));
-                          clearFieldError("condition");
-                        }}
-                      />
-                      {conditionKey
-                        ? t(conditionKey)
-                        : t(String(item.label), { defaultValue: item.label })}
-                    </label>
-                  );
-                })}
-              </div>
-              {renderFieldError("condition")}
-            </div>
-
-            <div className="single-auction-section">
-              <h3 className="single-auction-section-title">
-                {t("categoryAttributes")}
-              </h3>
-
-              {loadingAttributes ? (
-                <div className="single-auction-loading-note">
-                  {t("loadingCategoryAttributes")}
-                </div>
-              ) : !categoryId ? (
-                <div className="single-auction-loading-note">
-                  {t("selectCategoryAttributes")}
-                </div>
-              ) : displayAttributes.length === 0 ? (
-                <div className="single-auction-loading-note">
-                  {t("noAttributesFound")}
-                </div>
-              ) : (
-                displayAttributes.map((attribute) => (
-                  <div
-                    key={attribute.id}
-                    className="single-auction-attribute-item"
-                  >
-                    <div className="single-auction-attribute-title">
-                      {attribute.name}
-                      {attribute.isRequired ? " *" : ""}
-                    </div>
-
-                    <div className="single-auction-attribute-meta">
-                      {t("type")}: {attribute.dataType}
-                      {attribute.unit
-                        ? ` | ${t("unit")}: ${getUnitLabel(attribute.unit)}`
-                        : ""}
-                    </div>
-
-                    {renderAttributeField(attribute)}
-                    {renderFieldError(`attribute_${attribute.id}`)}
-                  </div>
-                ))
-              )}
-
-              {renderFieldError("attributes")}
             </div>
 
             <div className="single-auction-actions">
@@ -1112,6 +857,7 @@ export default function Single_Auction() {
                   <input
                     type="number"
                     min="1"
+                    max={MAX_STARTING_PRICE}
                     className="single-auction-input"
                     value={startingPrice}
                     onChange={(e) => {
@@ -1167,6 +913,7 @@ export default function Single_Auction() {
                 <input
                   type="number"
                   min="1"
+                  max={MAX_BID_INCREMENT}
                   className="single-auction-input"
                   value={customBid}
                   onChange={(e) => {

@@ -1,322 +1,489 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import icon from "../../assets/2.png";
 
-import avatar1 from "../../assets/1.png";
-import avatar2 from "../../assets/1.png";
-import avatar3 from "../../assets/1.png";
+import icon from "../../assets/2.png";
+import avatar from "../../assets/1.png";
+import { addReview, getSellerReviews } from "../../API/review";
 
 export default function SellerReview() {
   const { t, i18n } = useTranslation();
   const isArabic = i18n.language === "ar";
+  const location = useLocation();
+
+  const params = new URLSearchParams(location.search);
+
+  const sellerId = Number(params.get("sellerId") || 0);
+  const auctionId = Number(params.get("auctionId") || 0);
+
+  const [summary, setSummary] = useState({
+    averageRating: 0,
+    totalReviews: 0,
+    reviews: [],
+  });
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const [showModal, setShowModal] = useState(false);
+  const [comment, setComment] = useState("");
+  const [rating, setRating] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     document.title = t("reviewsDocTitle") || "Review & Ratings";
+
+    const link = document.querySelector("link[rel~='icon']");
+    if (link) link.href = icon;
   }, [t]);
 
-  useEffect(() => {
-    const link = document.querySelector("link[rel~='icon']");
+  const loadReviews = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
 
-    if (!link) {
-      const newLink = document.createElement("link");
-      newLink.rel = "icon";
-      newLink.href = icon;
-      document.head.appendChild(newLink);
-    } else {
-      link.href = icon;
+      if (!sellerId || sellerId <= 0) {
+        throw new Error("Seller ID is missing or invalid.");
+      }
+
+      const data = await getSellerReviews(sellerId);
+      setSummary(data);
+    } catch (err) {
+      setError(err?.message || "Failed to load reviews.");
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [sellerId]);
 
-  const initialReviews = useMemo(
-    () => [
-      {
-        id: "r3",
-        name: "Ahmed Tamer",
-        avatar: avatar1,
-        ratingSeller: 5,
-        ratingDelivery: 4,
-        comment:
-          t("demoReview1") ||
-          "Very fast response and the item was exactly as described.",
-        createdAt: new Date("2026-03-02T12:30:00").getTime(),
-      },
-      {
-        id: "r2",
-        name: "Omar Ali",
-        avatar: avatar2,
-        ratingSeller: 4,
-        ratingDelivery: 3,
-        comment:
-          t("demoReview2") ||
-          "Good seller. Delivery was a bit late but overall okay.",
-        createdAt: new Date("2026-02-18T09:10:00").getTime(),
-      },
-      {
-        id: "r1",
-        name: "Sara Mohamed",
-        avatar: avatar3,
-        ratingSeller: 5,
-        ratingDelivery: 5,
-        comment: t("demoReview3") || "Excellent experience. Highly recommended!",
-        createdAt: new Date("2026-01-30T21:05:00").getTime(),
-      },
-    ],
-    [t]
-  );
-
-  const [reviews, setReviews] = useState(() => initialReviews);
-  const [showModal, setShowModal] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [formError, setFormError] = useState("");
-
-  const [comment, setComment] = useState("");
-  const [sellerRate, setSellerRate] = useState(0);
-  const [deliveryRate, setDeliveryRate] = useState(0);
+  useEffect(() => {
+    loadReviews();
+  }, [loadReviews]);
 
   const wordCount = useMemo(() => {
     const trimmed = comment.trim();
-    if (!trimmed) return 0;
-    return trimmed.split(/\s+/).length;
+    return trimmed ? trimmed.split(/\s+/).filter(Boolean).length : 0;
   }, [comment]);
 
-  const overLimit = wordCount > 100;
-
-  const formatDate = (ms) => {
-    try {
-      return new Date(ms).toLocaleString(isArabic ? "ar-EG" : "en-GB");
-    } catch {
-      return "";
-    }
-  };
-
-  const Stars = ({ value, onChange, size = 18, readOnly = false }) => {
-    const stars = [1, 2, 3, 4, 5];
-
-    return (
-      <div className="sr-stars" aria-label="stars">
-        {stars.map((s) => (
-          <button
-            key={s}
-            type="button"
-            className={`sr-star-btn ${s <= value ? "active" : ""} ${
-              readOnly ? "readonly" : ""
-            }`}
-            onClick={() => {
-              if (!readOnly) onChange?.(s);
-            }}
-            style={{ fontSize: size }}
-            aria-label={`${s} ${t("star") || "star"}`}
-          >
-            ★
-          </button>
-        ))}
-      </div>
-    );
-  };
+  const Stars = ({ value, onChange, readOnly = false, size = 22 }) => (
+    <div className="sr-stars">
+      {[1, 2, 3, 4, 5].map((s) => (
+        <button
+          key={s}
+          type="button"
+          className={`sr-star-btn ${s <= Number(value || 0) ? "active" : ""}`}
+          style={{ fontSize: size }}
+          disabled={readOnly}
+          aria-label={`${s} star`}
+          onClick={() => {
+            if (!readOnly) onChange?.(s);
+          }}
+        >
+          ★
+        </button>
+      ))}
+    </div>
+  );
 
   const openModal = () => {
-    setShowModal(true);
-    setShowConfirm(false);
-    setFormError("");
+    setError("");
+    setSuccess("");
+
+    if (!auctionId || auctionId <= 0) {
+      setError("Auction ID is missing. Open this page from auction details with ?auctionId=ID.");
+      return;
+    }
+
     setComment("");
-    setSellerRate(0);
-    setDeliveryRate(0);
+    setRating(0);
+    setShowModal(true);
   };
 
-  const closeModal = () => {
-    setShowModal(false);
-    setShowConfirm(false);
-    setFormError("");
+  const submitReview = async () => {
+    if (submitting) return;
+
+    try {
+      setError("");
+      setSuccess("");
+
+      const cleanComment = comment.trim();
+
+      if (!auctionId || auctionId <= 0) {
+        throw new Error("Auction ID is missing or invalid.");
+      }
+
+      if (!rating || rating < 1 || rating > 5) {
+        throw new Error("Please select a rating from 1 to 5.");
+      }
+
+      if (!cleanComment) {
+        throw new Error("Please write a review.");
+      }
+
+      if (wordCount > 100) {
+        throw new Error("Max 100 words.");
+      }
+
+      setSubmitting(true);
+
+      const res = await addReview({
+        auctionId,
+        rating,
+        comment: cleanComment,
+      });
+
+      setSuccess(res?.message || res?.Message || "Review added successfully.");
+      setShowModal(false);
+      setComment("");
+      setRating(0);
+
+      await loadReviews();
+    } catch (err) {
+      // Keep modal open so user can fix the issue.
+      setError(err?.message || "You are not allowed to review this auction.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const onSubmitClick = () => {
-    setFormError("");
-
-    if (!comment.trim()) {
-      setFormError(t("pleaseWriteReview") || "Please write a review.");
-      return;
-    }
-
-    if (overLimit) {
-      setFormError(t("max100Words") || "Max 100 words.");
-      return;
-    }
-
-    if (sellerRate === 0) {
-      setFormError(t("pleaseSelectSellerRate") || "Please select Seller rate.");
-      return;
-    }
-
-    if (deliveryRate === 0) {
-      setFormError(t("pleaseSelectDeliveryRate") || "Please select Delivery rate.");
-      return;
-    }
-
-    setShowConfirm(true);
+  const formatDate = (value) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "--";
+    return date.toLocaleString(isArabic ? "ar-EG" : "en-GB");
   };
 
-  const submitReview = () => {
-    const newReview = {
-      id: `r_${Date.now()}`,
-      name: t("you") || "You",
-      avatar: avatar1,
-      ratingSeller: sellerRate,
-      ratingDelivery: deliveryRate,
-      comment: comment.trim(),
-      createdAt: Date.now(),
-    };
-
-    setReviews((prev) => [newReview, ...prev]);
-    setShowConfirm(false);
-    setShowModal(false);
-  };
+  const reviews = Array.isArray(summary.reviews) ? summary.reviews : [];
 
   return (
     <div className="seller-review-page" dir={isArabic ? "rtl" : "ltr"}>
-      <div className="container">
+      <style>{`
+        .seller-review-page {
+          min-height: 100vh;
+          background: #f5f6fa;
+          padding: 36px 0 100px;
+          font-family: Arial, Helvetica, sans-serif;
+        }
+
+        .sr-container {
+          width: min(1000px, 94%);
+          margin: 0 auto;
+        }
+
+        .sr-header {
+          background: #fff;
+          border-radius: 22px;
+          padding: 24px;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+          margin-bottom: 20px;
+          text-align: center;
+        }
+
+        .sr-title {
+          margin: 0 0 8px;
+          color: #023E8A;
+          font-size: 34px;
+          font-weight: 900;
+        }
+
+        .sr-summary {
+          color: #334155;
+          font-size: 16px;
+          font-weight: 800;
+        }
+
+        .sr-card {
+          background: #fff;
+          border-radius: 20px;
+          padding: 20px;
+          box-shadow: 0 6px 20px rgba(0,0,0,0.06);
+          border: 1px solid #eef2f7;
+          margin-bottom: 16px;
+        }
+
+        .sr-top {
+          display: flex;
+          gap: 14px;
+          align-items: flex-start;
+        }
+
+        .sr-avatar {
+          width: 58px;
+          height: 58px;
+          border-radius: 50%;
+          object-fit: cover;
+          background: #eef4ff;
+        }
+
+        .sr-name {
+          color: #111827;
+          font-size: 18px;
+          font-weight: 900;
+          margin-bottom: 6px;
+        }
+
+        .sr-date {
+          color: #64748b;
+          font-size: 13px;
+          font-weight: 700;
+          margin-top: 6px;
+        }
+
+        .sr-comment {
+          margin-top: 14px;
+          color: #334155;
+          line-height: 1.7;
+          font-size: 15px;
+          overflow-wrap: anywhere;
+        }
+
+        .sr-stars {
+          display: flex;
+          gap: 3px;
+        }
+
+        .sr-star-btn {
+          border: none;
+          background: transparent;
+          color: #cbd5e1;
+          cursor: pointer;
+          padding: 0;
+          line-height: 1;
+        }
+
+        .sr-star-btn.active {
+          color: #f59e0b;
+        }
+
+        .sr-star-btn:disabled {
+          cursor: default;
+        }
+
+        .sr-error {
+          background: #fff1f0;
+          color: #cf1322;
+          border: 1px solid #ffa39e;
+          border-radius: 12px;
+          padding: 12px 14px;
+          margin-bottom: 14px;
+          font-weight: 700;
+          overflow-wrap: anywhere;
+        }
+
+        .sr-success {
+          background: #f6ffed;
+          color: #237804;
+          border: 1px solid #b7eb8f;
+          border-radius: 12px;
+          padding: 12px 14px;
+          margin-bottom: 14px;
+          font-weight: 700;
+        }
+
+        .sr-empty {
+          background: #fff;
+          border-radius: 18px;
+          padding: 30px;
+          text-align: center;
+          color: #64748b;
+          font-weight: 800;
+        }
+
+        .sr-sticky {
+          position: fixed;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(255,255,255,0.92);
+          border-top: 1px solid #e5e7eb;
+          padding: 14px;
+          backdrop-filter: blur(8px);
+          z-index: 1000;
+        }
+
+        .sr-add-btn,
+        .sr-submit-btn,
+        .sr-cancel-btn {
+          border: none;
+          border-radius: 12px;
+          min-height: 48px;
+          padding: 0 20px;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .sr-add-btn,
+        .sr-submit-btn {
+          background: #023E8A;
+          color: #fff;
+        }
+
+        .sr-submit-btn:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
+        }
+
+        .sr-cancel-btn {
+          background: #eef2ff;
+          color: #023E8A;
+        }
+
+        .sr-modal-backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(0,0,0,0.55);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 99999;
+          padding: 16px;
+        }
+
+        .sr-modal {
+          width: min(520px, 100%);
+          background: #fff;
+          border-radius: 20px;
+          padding: 22px;
+          box-shadow: 0 24px 70px rgba(0,0,0,0.35);
+        }
+
+        .sr-modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 16px;
+        }
+
+        .sr-modal-title {
+          margin: 0;
+          color: #023E8A;
+          font-size: 22px;
+          font-weight: 900;
+        }
+
+        .sr-close {
+          border: none;
+          background: transparent;
+          color: #ef4444;
+          font-size: 26px;
+          cursor: pointer;
+        }
+
+        .sr-textarea {
+          width: 100%;
+          min-height: 120px;
+          border: 1px solid #d1d5db;
+          border-radius: 14px;
+          padding: 14px;
+          resize: vertical;
+          outline: none;
+          margin: 14px 0 6px;
+          box-sizing: border-box;
+        }
+
+        .sr-counter {
+          color: #64748b;
+          font-size: 13px;
+          font-weight: 700;
+          margin-bottom: 12px;
+        }
+
+        .sr-counter.danger {
+          color: #cf1322;
+        }
+
+        .sr-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+          margin-top: 18px;
+        }
+      `}</style>
+
+      <div className="sr-container">
         <div className="sr-header">
-          <h2 className="sr-title">{t("reviewsRatings") || "Reviews & Ratings"}</h2>
-          <p className="sr-subtitle">
-            {t("newestReviewsFirst") || "Newest reviews appear first."}
-          </p>
+          <h2 className="sr-title">Reviews & Ratings</h2>
+          <div className="sr-summary">
+            Average: {Number(summary.averageRating || 0).toFixed(1)} / 5 — Total:{" "}
+            {summary.totalReviews || 0}
+          </div>
         </div>
 
-        <div className="sr-list">
-          {reviews.map((r) => (
-            <div key={r.id} className="sr-card">
+        {error ? <div className="sr-error">{error}</div> : null}
+        {success ? <div className="sr-success">{success}</div> : null}
+
+        {loading ? (
+          <div className="sr-empty">Loading reviews...</div>
+        ) : reviews.length ? (
+          reviews.map((r, index) => (
+            <div className="sr-card" key={`${r.id || r.reviewId || r.userName || "user"}-${index}`}>
               <div className="sr-top">
-                <img className="sr-avatar" src={r.avatar} alt="client" />
+                <img
+                  className="sr-avatar"
+                  src={r.userImage || r.UserImage || avatar}
+                  alt={r.userName || r.UserName || "user"}
+                />
 
-                <div className="sr-meta">
-                  <div className="sr-name">{r.name}</div>
-
-                  <div className="sr-rates">
-                    <div className="sr-rate-row">
-                      <span className="sr-rate-label">{t("seller") || "Seller"}:</span>
-                      <Stars value={r.ratingSeller} readOnly />
-                    </div>
-
-                    <div className="sr-rate-row">
-                      <span className="sr-rate-label">{t("delivery") || "Delivery"}:</span>
-                      <Stars value={r.ratingDelivery} readOnly />
-                    </div>
-                  </div>
-
-                  <div className="sr-date">{formatDate(r.createdAt)}</div>
+                <div>
+                  <div className="sr-name">{r.userName || r.UserName || "User"}</div>
+                  <Stars value={Number(r.rating || r.Rating || 0)} readOnly />
+                  <div className="sr-date">{formatDate(r.date || r.Date || r.createdAt || r.CreatedAt)}</div>
                 </div>
               </div>
 
-              <div className="sr-comment">{r.comment}</div>
+              <div className="sr-comment">{r.comment || r.Comment || "--"}</div>
             </div>
-          ))}
-
-          {reviews.length === 0 && (
-            <div className="sr-empty">{t("noReviewsYet") || "No reviews yet."}</div>
-          )}
-        </div>
-
-        <div className="sr-bottom-spacer" />
+          ))
+        ) : (
+          <div className="sr-empty">No reviews yet.</div>
+        )}
       </div>
 
       <div className="sr-sticky">
-        <div className="container sr-sticky-inner">
-          <button className="btn btn-primary sr-sticky-btn" onClick={openModal} type="button">
-            {t("addReview") || "Add Review"}
+        <div className="sr-container">
+          <button type="button" className="sr-add-btn" onClick={openModal}>
+            Add Review
           </button>
         </div>
       </div>
 
       {showModal && (
-        <div className="sr-modal-backdrop" onMouseDown={closeModal}>
+        <div className="sr-modal-backdrop" onMouseDown={() => setShowModal(false)}>
           <div className="sr-modal" onMouseDown={(e) => e.stopPropagation()}>
             <div className="sr-modal-header">
-              <h3 className="sr-modal-title">{t("addAReview") || "Add a review"}</h3>
-
-              <button className="sr-close" type="button" onClick={closeModal} aria-label="close">
-                ✕
+              <h3 className="sr-modal-title">Add Review</h3>
+              <button type="button" className="sr-close" onClick={() => setShowModal(false)}>
+                ×
               </button>
             </div>
 
-            <div className="sr-field">
-              <div className="sr-field-row">
-                <div className="sr-field-label">{t("yourReview") || "Your review"}</div>
+            <Stars value={rating} onChange={setRating} size={30} />
 
-                <div className={`sr-counter ${overLimit ? "danger" : ""}`}>
-                  {wordCount}/100 {t("words") || "words"}
-                </div>
-              </div>
+            <textarea
+              className="sr-textarea"
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Write your review..."
+              maxLength={1000}
+            />
 
-              <textarea
-                className={`form-control sr-textarea ${overLimit ? "is-invalid" : ""}`}
-                rows={4}
-                placeholder={t("writeYourReview") || "Write your review..."}
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-              />
-
-              {overLimit && <div className="sr-error">{t("max100Words") || "Max 100 words."}</div>}
+            <div className={`sr-counter ${wordCount > 100 ? "danger" : ""}`}>
+              {wordCount}/100 words
             </div>
 
-            <div className="sr-field">
-              <div className="sr-field-label">{t("sellerRate") || "Seller rate"}</div>
-              <Stars value={sellerRate} onChange={setSellerRate} size={22} />
-            </div>
-
-            <div className="sr-field">
-              <div className="sr-field-label">{t("deliveryRate") || "Delivery rate"}</div>
-              <Stars value={deliveryRate} onChange={setDeliveryRate} size={22} />
-            </div>
-
-            {formError && <div className="sr-error">{formError}</div>}
-
-            <div className="sr-modal-actions">
-              <button className="btn btn-light" type="button" onClick={closeModal}>
-                {t("cancel") || "Cancel"}
+            <div className="sr-actions">
+              <button type="button" className="sr-cancel-btn" onClick={() => setShowModal(false)}>
+                Cancel
               </button>
 
-              <button className="btn btn-primary" type="button" onClick={onSubmitClick}>
-                {t("submit") || "Submit"}
+              <button
+                type="button"
+                className="sr-submit-btn"
+                onClick={submitReview}
+                disabled={submitting}
+              >
+                {submitting ? "Submitting..." : "Submit"}
               </button>
             </div>
-
-            {showConfirm && (
-              <div className="sr-modal-backdrop" onMouseDown={() => setShowConfirm(false)}>
-                <div className="sr-modal" onMouseDown={(e) => e.stopPropagation()}>
-                  <div className="sr-modal-header">
-                    <h3 className="sr-modal-title">
-                      {t("submitReviewQuestion") || "Submit review?"}
-                    </h3>
-
-                    <button
-                      className="sr-close"
-                      type="button"
-                      onClick={() => setShowConfirm(false)}
-                      aria-label="close"
-                    >
-                      ✕
-                    </button>
-                  </div>
-
-                  <p className="mb-0">
-                    {t("submitReviewConfirm") || "Are you sure you want to submit this review?"}
-                  </p>
-
-                  <div className="sr-modal-actions">
-                    <button
-                      className="btn btn-light"
-                      type="button"
-                      onClick={() => setShowConfirm(false)}
-                    >
-                      {t("no") || "No"}
-                    </button>
-
-                    <button className="btn btn-primary" type="button" onClick={submitReview}>
-                      {t("yesSubmit") || "Yes, Submit"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}

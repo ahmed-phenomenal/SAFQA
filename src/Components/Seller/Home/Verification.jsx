@@ -24,6 +24,8 @@ const getCurrentAccountKey = () => {
   return String(
     localStorage.getItem("currentUserEmail") ||
       localStorage.getItem("pendingEmail") ||
+      sessionStorage.getItem("currentUserEmail") ||
+      sessionStorage.getItem("pendingEmail") ||
       "guest"
   )
     .trim()
@@ -54,9 +56,15 @@ const looksSuccessful = (data) => {
   if (typeof raw === "string") {
     const normalized = raw.trim().toLowerCase();
     if (
-      ["ok", "success", "done", "completed", "created", "accepted", "submitted"].includes(
-        normalized
-      )
+      [
+        "ok",
+        "success",
+        "done",
+        "completed",
+        "created",
+        "accepted",
+        "submitted",
+      ].includes(normalized)
     ) {
       return true;
     }
@@ -115,8 +123,10 @@ export default function Verification() {
   const [generalError, setGeneralError] = useState("");
   const [generalSuccess, setGeneralSuccess] = useState("");
 
-  const { translatedText: translatedGeneralError } = useAutoTranslatedText(generalError);
-  const { translatedText: translatedGeneralSuccess } = useAutoTranslatedText(generalSuccess);
+  const { translatedText: translatedGeneralError } =
+    useAutoTranslatedText(generalError);
+  const { translatedText: translatedGeneralSuccess } =
+    useAutoTranslatedText(generalSuccess);
 
   const cachedDraft = readDraft();
 
@@ -125,11 +135,16 @@ export default function Verification() {
   const [countriesLoading, setCountriesLoading] = useState(false);
   const [citiesLoading, setCitiesLoading] = useState(false);
 
-  const { translatedData: translatedCountries } = useTranslatedApiData(countries);
+  const { translatedData: translatedCountries } =
+    useTranslatedApiData(countries);
   const { translatedData: translatedCities } = useTranslatedApiData(cities);
 
-  const displayCountries = Array.isArray(translatedCountries) ? translatedCountries : countries;
-  const displayCities = Array.isArray(translatedCities) ? translatedCities : cities;
+  const displayCountries = Array.isArray(translatedCountries)
+    ? translatedCountries
+    : countries;
+  const displayCities = Array.isArray(translatedCities)
+    ? translatedCities
+    : cities;
 
   const [currentStep, setCurrentStep] = useState(
     Number(cachedDraft?.currentStep || 0)
@@ -143,6 +158,7 @@ export default function Verification() {
     sellerCity: cachedDraft?.sellerCity || "",
     sellerCityId: cachedDraft?.sellerCityId || "",
     sellerLogo: null,
+
     sellerDescription: cachedDraft?.sellerDescription || "",
 
     nationalIdFront: null,
@@ -188,7 +204,14 @@ export default function Verification() {
 
     if (status === 401) return t("sessionExpired");
     if (status === 403) return t("backendRejectedStep");
-    if (status === 409) return message || t("stepAlreadyExists");
+
+    if (status === 409) {
+      if (currentStep === 0) return t("sellerInfoSaved");
+      if (currentStep === 1) return t("identityUploaded");
+      if (currentStep === 2) return t("businessSubmitted");
+      return message || t("stepAlreadyExists");
+    }
+
     if (status === 500) return message || fallbackMessage;
     if (looksLikeRawStatus || !message) return fallbackMessage;
 
@@ -375,7 +398,9 @@ export default function Verification() {
           ["phonenumber", "sellernumber", "phone", "mobile"].includes(key)
         ) {
           assign("sellerNumber", message);
-        } else if (["countryid", "sellercountry", "sellercountryid"].includes(key)) {
+        } else if (
+          ["countryid", "sellercountry", "sellercountryid"].includes(key)
+        ) {
           assign("sellerCountry", message);
         } else if (["cityid", "sellercity", "sellercityid"].includes(key)) {
           assign("sellerCity", message);
@@ -387,9 +412,13 @@ export default function Verification() {
       }
 
       if (stepIndex === 1) {
-        if (["nationalidfront"].includes(key)) assign("nationalIdFront", message);
-        else if (["nationalidback"].includes(key)) assign("nationalIdBack", message);
-        else if (["selfiewithid"].includes(key)) assign("selfieWithId", message);
+        if (["nationalidfront"].includes(key)) {
+          assign("nationalIdFront", message);
+        } else if (["nationalidback"].includes(key)) {
+          assign("nationalIdBack", message);
+        } else if (["selfiewithid"].includes(key)) {
+          assign("selfieWithId", message);
+        }
       }
 
       if (stepIndex === 2) {
@@ -457,7 +486,9 @@ export default function Verification() {
 
   const handleCountryChange = (e) => {
     const selectedId = String(e.target.value || "");
-    const selectedCountry = countries.find((item) => String(item.id) === selectedId);
+    const selectedCountry = countries.find(
+      (item) => String(item.id) === selectedId
+    );
 
     clearStepVisuals();
 
@@ -628,7 +659,10 @@ export default function Verification() {
       const instaPayDigits = getDigitsOnly(formData.instaPayNumber);
       if (instaPayDigits) {
         const instaPayAsNumber = Number(instaPayDigits);
-        if (!Number.isFinite(instaPayAsNumber) || instaPayAsNumber > MAX_INT_32) {
+        if (
+          !Number.isFinite(instaPayAsNumber) ||
+          instaPayAsNumber > MAX_INT_32
+        ) {
           newErrors.instaPayNumber = t("instaPayInvalid");
         }
       }
@@ -662,7 +696,9 @@ export default function Verification() {
       Number(data?.sellerId || 0) > 0;
 
     if (!success) {
-      throw new Error(data?.message || data?.errors?.[0] || "Create seller failed");
+      throw new Error(
+        data?.message || data?.errors?.[0] || "Create seller failed"
+      );
     }
 
     setGeneralSuccess(data?.message || t("sellerInfoSaved"));
@@ -752,6 +788,31 @@ export default function Verification() {
         }, 800);
       }
     } catch (error) {
+      const status = Number(error?.response?.status || 0);
+
+      if (status === 409) {
+        if (currentStep === 0) {
+          setGeneralSuccess(t("sellerInfoSaved"));
+          setCurrentStep(1);
+          return;
+        }
+
+        if (currentStep === 1) {
+          setGeneralSuccess(t("identityUploaded"));
+          setCurrentStep(2);
+          return;
+        }
+
+        if (currentStep === 2) {
+          setGeneralSuccess(t("businessSubmitted"));
+          clearDraft();
+          setTimeout(() => {
+            navigate("/seller", { replace: true });
+          }, 800);
+          return;
+        }
+      }
+
       const hasMappedFieldErrors = applyBackendFieldErrors(error, currentStep);
       if (hasMappedFieldErrors) {
         setGeneralError("");
@@ -1056,7 +1117,9 @@ export default function Verification() {
         <input
           type="text"
           name="instaPayNumber"
-          placeholder={t("Digits only, optional", { defaultValue: "Digits only, optional" })}
+          placeholder={t("Digits only, optional", {
+            defaultValue: "Digits only, optional",
+          })}
           className="verification__input"
           value={formData.instaPayNumber}
           onChange={(e) => handleDigitsInputChange(e, "instaPayNumber")}

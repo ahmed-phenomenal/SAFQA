@@ -723,7 +723,11 @@ export default function Signin() {
       window.google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
         callback: async (response) => {
-          const idToken = response?.credential;
+             const idToken = response?.credential;
+
+          console.log("TOKEN =", idToken);
+
+          await handleGoogleBackend(idToken, "buyer");
 
           if (!idToken) {
             const msg = t("googleTokenMissing");
