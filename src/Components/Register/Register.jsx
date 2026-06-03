@@ -980,24 +980,33 @@ export default function Register() {
                 </div>
               )}
 
-              <div className="terms mb-2 my-4">
-                <input
-                  type="checkbox"
-                  name="terms"
-                  onChange={(e) => {
-                    setGeneralError("");
-                    formik.handleChange(e);
-                  }}
-                  onBlur={formik.handleBlur}
-                  checked={formik.values.terms}
-                />
-                <label>
-                  {t("signupAgree")}{" "}
-                  <Link to="/Terms&Conditions">
-                    <span className="span1">{t("signupTerms")}</span>
-                  </Link>
-                </label>
-              </div>
+<div className="terms-container mb-4">
+  <input
+    type="checkbox"
+    id="terms-checkbox" 
+    name="terms"
+    className="terms-checkbox"
+    onChange={(e) => {
+      setGeneralError("");
+      formik.handleChange(e);
+    }}
+    onBlur={formik.handleBlur}
+    checked={formik.values.terms}
+  />
+  <label htmlFor="terms-checkbox" className="terms-label">
+    {t("signupAgree")}{" "}
+    <Link to="/Terms&Conditions" className="terms-link">
+      <span className="span1">{t("signupTerms")}</span>
+    </Link>
+  </label>
+</div>
+
+{/* Display Formik error if checkbox is required but not checked */}
+{formik.touched.terms && formik.errors.terms && (
+  <div className="alert alert-danger py-1 px-2" style={{ fontSize: "13px" }}>
+    {formik.errors.terms}
+  </div>
+)}
 
               {formik.submitCount > 0 && formik.errors.terms && (
                 <div className="alert alert-danger">{formik.errors.terms}</div>

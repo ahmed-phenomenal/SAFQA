@@ -1,31 +1,50 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router-dom";
 import icon from "../../../assets/2.png";
+import {
+  getCurrentChatSenderId,
+  normalizeChatMessage,
+  openChatConversation,
+  sendChatMessage,
+} from "../../../API/chat";
 
 export default function Seller_Chat() {
   const { t, i18n } = useTranslation();
   const isArabic = i18n.language === "ar";
+  const location = useLocation();
 
-  const [input, setInput] = useState("");
-  const [replyIndex, setReplyIndex] = useState(0);
-  const messagesEndRef = useRef(null);
+  const params = new URLSearchParams(location.search);
 
-  const autoReplies = useMemo(
-    () => [
-      t("chatAutoReply1"),
-      t("chatAutoReply2"),
-      t("chatAutoReply3"),
-    ],
-    [t]
+  const initialDisputeId = Number(
+    location?.state?.disputeId ||
+      params.get("disputeId") ||
+      params.get("dispute") ||
+      params.get("id") ||
+      0
   );
 
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      sender: "buyer",
-      textKey: "chatInitialBuyerMessage",
-    },
-  ]);
+  const senderId = useMemo(() => getCurrentChatSenderId("seller"), []);
+
+  const [disputeId, setDisputeId] = useState(initialDisputeId);
+  const [disputeInput, setDisputeInput] = useState(
+    initialDisputeId ? String(initialDisputeId) : ""
+  );
+  const [conversationId, setConversationId] = useState(0);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+
+  const messagesEndRef = useRef(null);
+
+  const buyerAvatar = "https://i.pravatar.cc/100?img=15";
+  const sellerAvatar = "https://i.pravatar.cc/100?img=32";
+  const primaryColor = "#023E8A";
+  const lightBg = "#f5f7fb";
+  const buyerBubble = "#e9eef6";
 
   useEffect(() => {
     document.title = t("sellerChatDocTitle");
@@ -42,32 +61,135 @@ export default function Seller_Chat() {
   }, []);
 
   useEffect(() => {
+    if (!error && !info) return;
+
+    const timer = setTimeout(() => {
+      setError("");
+      setInfo("");
+    }, 15000);
+
+    return () => clearTimeout(timer);
+  }, [error, info]);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSend = () => {
+  const isMyMessage = useCallback(
+    (message) => {
+      return (
+        String(message?.senderId || "").trim().toLowerCase() ===
+        String(senderId || "").trim().toLowerCase()
+      );
+    },
+    [senderId]
+  );
+
+  const loadConversation = useCallback(
+    async (showLoader = true) => {
+      if (!disputeId) return null;
+
+      try {
+        if (showLoader) setLoading(true);
+        setError("");
+
+        const conversation = await openChatConversation({
+          disputeId,
+          role: "seller",
+        });
+
+        setConversationId(conversation.conversationId);
+
+        if (Array.isArray(conversation.messages)) {
+          setMessages(conversation.messages);
+        }
+
+        return conversation;
+      } catch (err) {
+        setError(err?.message || "Failed to load conversation.");
+        return null;
+      } finally {
+        if (showLoader) setLoading(false);
+      }
+    },
+    [disputeId]
+  );
+
+  useEffect(() => {
+    if (!disputeId) return;
+
+    loadConversation(true);
+
+    const interval = setInterval(() => {
+      loadConversation(false);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [disputeId, loadConversation]);
+
+  const handleLoadByDisputeId = () => {
+    const id = Number(disputeInput || 0);
+
+    if (!id || id <= 0) {
+      setError("Please enter a valid dispute ID.");
+      return;
+    }
+
+    setDisputeId(id);
+  };
+
+  const handleSend = async () => {
     const trimmedMessage = input.trim();
-    if (!trimmedMessage) return;
+    if (!trimmedMessage || sending) return;
 
-    const sellerMessage = {
-      id: Date.now(),
-      sender: "me",
-      text: trimmedMessage,
-    };
+    try {
+      setSending(true);
+      setError("");
+      setInfo("");
 
-    setMessages((prev) => [...prev, sellerMessage]);
-    setInput("");
+      let currentConversationId = conversationId;
 
-    setTimeout(() => {
-      const buyerReply = {
-        id: Date.now() + 1,
-        sender: "buyer",
-        text: autoReplies[replyIndex],
-      };
+      if (!currentConversationId) {
+        const conversation = await openChatConversation({
+          disputeId,
+          role: "seller",
+        });
 
-      setMessages((prev) => [...prev, buyerReply]);
-      setReplyIndex((prev) => (prev + 1) % autoReplies.length);
-    }, 700);
+        currentConversationId = conversation.conversationId;
+        setConversationId(currentConversationId);
+
+        if (Array.isArray(conversation.messages)) {
+          setMessages(conversation.messages);
+        }
+      }
+
+      const localMessage = normalizeChatMessage(
+        {},
+        {
+          id: Date.now(),
+          conversationId: currentConversationId,
+          senderId,
+          content: trimmedMessage,
+          createdAt: new Date().toISOString(),
+        }
+      );
+
+      setMessages((prev) => [...prev, localMessage]);
+      setInput("");
+
+      await sendChatMessage({
+        conversationId: currentConversationId,
+        senderId,
+        content: trimmedMessage,
+        role: "seller",
+      });
+
+      await loadConversation(false);
+    } catch (err) {
+      setError(err?.message || "Failed to send message.");
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleKeyDown = (e) => {
@@ -76,12 +198,6 @@ export default function Seller_Chat() {
       handleSend();
     }
   };
-
-  const buyerAvatar = "https://i.pravatar.cc/100?img=15";
-  const sellerAvatar = "https://i.pravatar.cc/100?img=32";
-  const primaryColor = "#023E8A";
-  const lightBg = "#f5f7fb";
-  const buyerBubble = "#e9eef6";
 
   return (
     <div
@@ -111,7 +227,7 @@ export default function Seller_Chat() {
       >
         <div
           style={{
-            padding: "26px 30px 20px",
+            padding: "22px 30px 18px",
             borderBottom: "1px solid #e7edf6",
             background: "#ffffff",
           }}
@@ -137,8 +253,83 @@ export default function Seller_Chat() {
               textAlign: isArabic ? "right" : "left",
             }}
           >
-            {t("chatSubtitle")}
+            {conversationId
+              ? `Conversation ID: ${conversationId} — Dispute ID: ${disputeId}`
+              : t("chatSubtitle")}
           </p>
+
+          {!disputeId ? (
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                marginTop: 14,
+              }}
+            >
+              <input
+                type="number"
+                value={disputeInput}
+                onChange={(e) => setDisputeInput(e.target.value)}
+                placeholder="Enter dispute ID"
+                style={{
+                  flex: 1,
+                  height: 44,
+                  border: "1px solid #c7d3e3",
+                  borderRadius: 12,
+                  padding: "0 14px",
+                  outline: "none",
+                }}
+              />
+
+              <button
+                type="button"
+                onClick={handleLoadByDisputeId}
+                style={{
+                  border: "none",
+                  borderRadius: 12,
+                  background: primaryColor,
+                  color: "#fff",
+                  padding: "0 18px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                Open
+              </button>
+            </div>
+          ) : null}
+
+          {error ? (
+            <div
+              style={{
+                marginTop: 12,
+                background: "#fff1f0",
+                color: "#cf1322",
+                border: "1px solid #ffa39e",
+                borderRadius: 12,
+                padding: "10px 12px",
+                fontWeight: 700,
+              }}
+            >
+              {error}
+            </div>
+          ) : null}
+
+          {info ? (
+            <div
+              style={{
+                marginTop: 12,
+                background: "#f6ffed",
+                color: "#237804",
+                border: "1px solid #b7eb8f",
+                borderRadius: 12,
+                padding: "10px 12px",
+                fontWeight: 700,
+              }}
+            >
+              {info}
+            </div>
+          ) : null}
         </div>
 
         <div
@@ -149,62 +340,102 @@ export default function Seller_Chat() {
             background: lightBg,
           }}
         >
-          {messages.map((message) => {
-            const isMe = message.sender === "me";
-            const text = message.textKey ? t(message.textKey) : message.text;
+          {loading ? (
+            <div
+              style={{
+                textAlign: "center",
+                color: "#64748b",
+                fontWeight: 800,
+                marginTop: 40,
+              }}
+            >
+              Loading conversation...
+            </div>
+          ) : messages.length ? (
+            messages.map((message) => {
+              const isMe = isMyMessage(message);
 
-            return (
-              <div
-                key={message.id}
-                style={{
-                  display: "flex",
-                  justifyContent: isMe ? "flex-end" : "flex-start",
-                  marginBottom: "18px",
-                }}
-              >
+              return (
                 <div
+                  key={message.id}
                   style={{
                     display: "flex",
-                    flexDirection: isMe ? "row-reverse" : "row",
-                    alignItems: "flex-end",
-                    gap: "10px",
-                    maxWidth: "78%",
+                    justifyContent: isMe ? "flex-end" : "flex-start",
+                    marginBottom: "18px",
                   }}
                 >
-                  <img
-                    src={isMe ? sellerAvatar : buyerAvatar}
-                    alt={isMe ? t("sellerAvatar") : t("buyerAvatar")}
-                    style={{
-                      width: "42px",
-                      height: "42px",
-                      borderRadius: "50%",
-                      objectFit: "cover",
-                      border: `2px solid ${isMe ? "#d7e6fb" : "#d9e1ec"}`,
-                      background: "#ffffff",
-                      flexShrink: 0,
-                    }}
-                  />
-
                   <div
                     style={{
-                      background: isMe ? primaryColor : buyerBubble,
-                      color: isMe ? "#ffffff" : "#1f2a37",
-                      padding: "14px 16px",
-                      borderRadius: isMe
-                        ? "18px 18px 6px 18px"
-                        : "18px 18px 18px 6px",
-                      lineHeight: 1.55,
-                      fontSize: "15px",
-                      wordBreak: "break-word",
-                      boxShadow: "0 3px 10px rgba(0,0,0,0.04)",
+                      display: "flex",
+                      flexDirection: isMe ? "row-reverse" : "row",
+                      alignItems: "flex-end",
+                      gap: "10px",
+                      maxWidth: "78%",
                     }}
                   >
-                    {text}
+                    <img
+                      src={isMe ? sellerAvatar : buyerAvatar}
+                      alt={isMe ? t("sellerAvatar") : t("buyerAvatar")}
+                      style={{
+                        width: "42px",
+                        height: "42px",
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                        border: `2px solid ${isMe ? "#d7e6fb" : "#d9e1ec"}`,
+                        background: "#ffffff",
+                        flexShrink: 0,
+                      }}
+                    />
+
+                    <div>
+                      <div
+                        style={{
+                          background: isMe ? primaryColor : buyerBubble,
+                          color: isMe ? "#ffffff" : "#1f2a37",
+                          padding: "14px 16px",
+                          borderRadius: isMe
+                            ? "18px 18px 6px 18px"
+                            : "18px 18px 18px 6px",
+                          lineHeight: 1.55,
+                          fontSize: "15px",
+                          wordBreak: "break-word",
+                          boxShadow: "0 3px 10px rgba(0,0,0,0.04)",
+                        }}
+                      >
+                        {message.content}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "#94a3b8",
+                          marginTop: 4,
+                          textAlign: isMe ? "right" : "left",
+                        }}
+                      >
+                        {message.createdAt
+                          ? new Date(message.createdAt).toLocaleString(
+                              isArabic ? "ar-EG" : "en-GB"
+                            )
+                          : ""}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          ) : (
+            <div
+              style={{
+                textAlign: "center",
+                color: "#64748b",
+                fontWeight: 800,
+                marginTop: 40,
+              }}
+            >
+              No messages yet.
+            </div>
+          )}
 
           <div ref={messagesEndRef} />
         </div>
@@ -229,6 +460,7 @@ export default function Seller_Chat() {
               onKeyDown={handleKeyDown}
               placeholder={t("writeYourReplyHere")}
               rows={2}
+              disabled={!disputeId || sending}
               style={{
                 flex: 1,
                 resize: "none",
@@ -244,6 +476,7 @@ export default function Seller_Chat() {
 
             <button
               onClick={handleSend}
+              disabled={!disputeId || sending}
               aria-label={t("sendMessage")}
               style={{
                 width: "60px",
@@ -253,22 +486,27 @@ export default function Seller_Chat() {
                 border: "none",
                 background: primaryColor,
                 color: "#ffffff",
-                cursor: "pointer",
+                cursor: !disputeId || sending ? "not-allowed" : "pointer",
+                opacity: !disputeId || sending ? 0.65 : 1,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 boxShadow: "0 8px 18px rgba(2, 62, 138, 0.24)",
               }}
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-              >
-                <path d="M21.8 2.2a1 1 0 0 0-1.05-.16L2.75 10.04a1 1 0 0 0 .09 1.87l7.15 2.51 2.51 7.15a1 1 0 0 0 .89.67h.06a1 1 0 0 0 .9-.56l8-18A1 1 0 0 0 21.8 2.2Zm-8.67 16.56-1.76-5.02a1 1 0 0 0-.61-.61L5.74 11.37l12.9-5.73Z" />
-              </svg>
+              {sending ? (
+                "..."
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M21.8 2.2a1 1 0 0 0-1.05-.16L2.75 10.04a1 1 0 0 0 .09 1.87l7.15 2.51 2.51 7.15a1 1 0 0 0 .89.67h.06a1 1 0 0 0 .9-.56l8-18A1 1 0 0 0 21.8 2.2Zm-8.67 16.56-1.76-5.02a1 1 0 0 0-.61-.61L5.74 11.37l12.9-5.73Z" />
+                </svg>
+              )}
             </button>
           </div>
         </div>

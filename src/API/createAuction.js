@@ -34,34 +34,15 @@ export const CONDITION_OPTIONS = [
 const MAX_STARTING_PRICE = 999999999;
 const MAX_BID_INCREMENT = 2147483647;
 
-const getCurrentAccountKey = () => {
-  if (typeof window === "undefined") return "guest";
-
-  return String(
-    localStorage.getItem("currentUserEmail") ||
-      sessionStorage.getItem("currentUserEmail") ||
-      localStorage.getItem("pendingEmail") ||
-      sessionStorage.getItem("pendingEmail") ||
-      "guest"
-  )
-    .trim()
-    .toLowerCase();
-};
-
-const CREATED_AUCTIONS_CACHE_KEY = `created_auctions_cache:${getCurrentAccountKey()}`;
-
 const readStorage = (key) => {
-  const fromSession =
-    typeof window !== "undefined" ? sessionStorage.getItem(key) : null;
+  if (typeof window === "undefined") return null;
 
+  const fromSession = sessionStorage.getItem(key);
   if (fromSession !== null && fromSession !== undefined && fromSession !== "") {
     return fromSession;
   }
 
-  const fromLocal =
-    typeof window !== "undefined" ? localStorage.getItem(key) : null;
-
-  return fromLocal;
+  return localStorage.getItem(key);
 };
 
 const cleanToken = (value) => {
@@ -110,6 +91,11 @@ const getToken = (...keys) => {
 
 const getSellerToken = () => {
   return getToken("sellerToken", "token", "userToken", "adminToken");
+};
+
+const getAuthHeaders = () => {
+  const token = getSellerToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
 const normalizeListResponse = (data) => {
@@ -286,6 +272,17 @@ const formatApiDateTime = (value) => {
   )}`;
 };
 
+const formatInputDateTime = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const pad = (v) => String(v).padStart(2, "0");
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate()
+  )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
 const formatApiDateOnly = (value = new Date()) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -396,6 +393,7 @@ const normalizeCreateItems = (payload) => {
       );
 
       return {
+        id: toNumber(firstDefined(rawItem?.id, rawItem?.Id, rawItem?.itemId, rawItem?.ItemId), 0),
         title: toStringValue(
           firstDefined(rawItem?.title, rawItem?.Title, payload?.title)
         ),
@@ -432,10 +430,10 @@ const normalizeCreateItems = (payload) => {
           : [],
       };
     })
-    .filter((item) => item.title && item.description && item.categoryId);
+    .filter((item) => item.title && item.description);
 };
 
-const validateCreateAuctionPayload = (payload) => {
+const validateAuctionPayload = (payload, { requireDates = true } = {}) => {
   const title = toStringValue(payload?.title);
   const description = toStringValue(payload?.description);
   const startingPrice = Number(payload?.startingPrice);
@@ -447,44 +445,58 @@ const validateCreateAuctionPayload = (payload) => {
   if (!title) throw new Error("Title is required.");
   if (!description) throw new Error("Description is required.");
 
-  if (!Number.isFinite(startingPrice) || startingPrice <= 0) {
-    throw new Error("Starting price must be greater than 0.");
-  }
-
-  if (startingPrice > MAX_STARTING_PRICE) {
-    throw new Error(
-      `Starting price is too large. Maximum allowed is ${MAX_STARTING_PRICE}.`
-    );
-  }
-
-  if (!Number.isFinite(bidIncrement) || bidIncrement <= 0) {
-    throw new Error("Bid increment must be greater than 0.");
-  }
-
-  if (!Number.isInteger(bidIncrement)) {
-    throw new Error("Bid increment must be a whole number.");
-  }
-
-  if (bidIncrement > MAX_BID_INCREMENT) {
-    throw new Error(
-      `Bid increment is too large. Maximum allowed is ${MAX_BID_INCREMENT}.`
-    );
-  }
-
-  if (!startDate) throw new Error("Start date is required.");
-  if (!endDate) throw new Error("End date is required.");
-
-  if (new Date(endDate).getTime() <= new Date(startDate).getTime()) {
-    throw new Error("End date must be after start date.");
-  }
-
   if (!categoryId) throw new Error("Category is required.");
+
+  if (payload?.startingPrice !== undefined && payload?.startingPrice !== "") {
+    if (!Number.isFinite(startingPrice) || startingPrice <= 0) {
+      throw new Error("Starting price must be greater than 0.");
+    }
+
+    if (startingPrice > MAX_STARTING_PRICE) {
+      throw new Error(
+        `Starting price is too large. Maximum allowed is ${MAX_STARTING_PRICE}.`
+      );
+    }
+  }
+
+  if (payload?.bidIncrement !== undefined && payload?.bidIncrement !== "") {
+    if (!Number.isFinite(bidIncrement) || bidIncrement <= 0) {
+      throw new Error("Bid increment must be greater than 0.");
+    }
+
+    if (!Number.isInteger(bidIncrement)) {
+      throw new Error("Bid increment must be a whole number.");
+    }
+
+    if (bidIncrement > MAX_BID_INCREMENT) {
+      throw new Error(
+        `Bid increment is too large. Maximum allowed is ${MAX_BID_INCREMENT}.`
+      );
+    }
+  }
+
+  if (requireDates) {
+    if (!startDate) throw new Error("Start date is required.");
+    if (!endDate) throw new Error("End date is required.");
+
+    if (new Date(endDate).getTime() <= new Date(startDate).getTime()) {
+      throw new Error("End date must be after start date.");
+    }
+  }
 
   const items = normalizeCreateItems(payload);
 
   if (!items.length) {
     throw new Error("At least one auction item is required.");
   }
+
+  items.forEach((item, index) => {
+    if (!item.title) throw new Error(`Item ${index + 1} title is required.`);
+    if (!item.description) throw new Error(`Item ${index + 1} description is required.`);
+    if (!Number(item.count) || Number(item.count) <= 0) {
+      throw new Error(`Item ${index + 1} count must be greater than 0.`);
+    }
+  });
 };
 
 const loadHiddenAttributesForCreate = async (categoryId, payload) => {
@@ -502,84 +514,129 @@ const loadHiddenAttributesForCreate = async (categoryId, payload) => {
   }
 };
 
-const buildCreateAuctionParams = async (payload) => {
+const appendToParamsAndForm = (params, formData, key, value) => {
+  if (value === undefined || value === null) return;
+
+  const finalValue = String(value);
+
+  params.append(key, finalValue);
+  formData.append(key, finalValue);
+};
+
+const buildAuctionParamsAndFormData = async (payload, { includeCreateFields = true } = {}) => {
   const params = new URLSearchParams();
+  const formData = new FormData();
   const items = normalizeCreateItems(payload);
 
-  params.append("Title", toStringValue(payload?.title));
-  params.append("Description", toStringValue(payload?.description));
-  params.append("StartingPrice", String(Number(payload?.startingPrice)));
-  params.append("BidIncrement", String(Number(payload?.bidIncrement)));
-  params.append("StartDate", formatApiDateTime(payload?.startDate));
-  params.append("EndDate", formatApiDateTime(payload?.endDate));
-  params.append("CategoryId", String(Number(payload?.categoryId)));
+  appendToParamsAndForm(params, formData, "Title", toStringValue(payload?.title));
+  appendToParamsAndForm(params, formData, "Description", toStringValue(payload?.description));
+  appendToParamsAndForm(params, formData, "CategoryId", String(Number(payload?.categoryId || 0)));
+
+  if (includeCreateFields || payload?.startingPrice !== undefined) {
+    appendToParamsAndForm(params, formData, "StartingPrice", String(Number(payload?.startingPrice || 0)));
+  }
+
+  if (includeCreateFields || payload?.bidIncrement !== undefined) {
+    appendToParamsAndForm(params, formData, "BidIncrement", String(Number(payload?.bidIncrement || 0)));
+  }
+
+  if (includeCreateFields || payload?.startDate) {
+    appendToParamsAndForm(params, formData, "StartDate", formatApiDateTime(payload?.startDate));
+  }
+
+  if (includeCreateFields || payload?.endDate) {
+    appendToParamsAndForm(params, formData, "EndDate", formatApiDateTime(payload?.endDate));
+  }
+
+  if (isFileValue(payload?.image)) {
+    formData.append("Image", payload.image);
+  }
 
   for (let itemIndex = 0; itemIndex < items.length; itemIndex += 1) {
     const item = items[itemIndex];
 
     let itemAttributes = item.attributes;
 
-    if (!itemAttributes.length) {
-      itemAttributes = await loadHiddenAttributesForCreate(
-        item.categoryId,
-        payload
-      );
+    if (!itemAttributes.length && item.categoryId) {
+      itemAttributes = await loadHiddenAttributesForCreate(item.categoryId, payload);
     }
 
-    params.append(`Items[${itemIndex}].Title`, item.title);
-    params.append(`Items[${itemIndex}].Description`, item.description);
-    params.append(`Items[${itemIndex}].Count`, String(item.count || 1));
-    params.append(
-      `Items[${itemIndex}].WarrantyInfo`,
-      item.warrantyInfo || "N/A"
-    );
-    params.append(`Items[${itemIndex}].Condition`, String(item.condition || 1));
-    params.append(`Items[${itemIndex}].CategoryId`, String(item.categoryId));
-
-    itemAttributes.forEach((attr, attrIndex) => {
-      params.append(
-        `Items[${itemIndex}].Attributes[${attrIndex}].CategoryAttributeId`,
-        String(attr.categoryAttributeId)
-      );
-      params.append(
-        `Items[${itemIndex}].Attributes[${attrIndex}].Value`,
-        String(attr.value || "Default")
-      );
-    });
-  }
-
-  return params;
-};
-
-const buildCreateAuctionImageFormData = (payload) => {
-  const formData = new FormData();
-  const items = normalizeCreateItems(payload);
-
-  if (isFileValue(payload?.image)) {
-    formData.append("Image", payload.image);
-  } else {
-    const firstItemImage = items.find((item) => isFileValue(item.imageFile))
-      ?.imageFile;
-    if (isFileValue(firstItemImage)) {
-      formData.append("Image", firstItemImage);
+    if (item.id) {
+      appendToParamsAndForm(params, formData, `Items[${itemIndex}].Id`, item.id);
     }
-  }
 
-  items.forEach((item, itemIndex) => {
+    appendToParamsAndForm(params, formData, `Items[${itemIndex}].Title`, item.title);
+    appendToParamsAndForm(params, formData, `Items[${itemIndex}].Description`, item.description);
+    appendToParamsAndForm(params, formData, `Items[${itemIndex}].Count`, item.count || 1);
+    appendToParamsAndForm(params, formData, `Items[${itemIndex}].WarrantyInfo`, item.warrantyInfo || "N/A");
+    appendToParamsAndForm(params, formData, `Items[${itemIndex}].Condition`, item.condition || 1);
+
+    if (item.categoryId) {
+      appendToParamsAndForm(params, formData, `Items[${itemIndex}].CategoryId`, item.categoryId);
+    }
+
     if (isFileValue(item.imageFile)) {
       formData.append(`Items[${itemIndex}].Image`, item.imageFile);
       formData.append(`Items[${itemIndex}].Images`, item.imageFile);
+      formData.append(`Items[${itemIndex}].images`, item.imageFile);
     }
 
     item.images.forEach((file) => {
       if (isFileValue(file)) {
         formData.append(`Items[${itemIndex}].Images`, file);
+        formData.append(`Items[${itemIndex}].images`, file);
       }
     });
-  });
 
-  return formData;
+    itemAttributes.forEach((attr, attrIndex) => {
+      appendToParamsAndForm(
+        params,
+        formData,
+        `Items[${itemIndex}].Attributes[${attrIndex}].CategoryAttributeId`,
+        attr.categoryAttributeId
+      );
+
+      appendToParamsAndForm(
+        params,
+        formData,
+        `Items[${itemIndex}].Attributes[${attrIndex}].Value`,
+        attr.value || "Default"
+      );
+
+      appendToParamsAndForm(
+        params,
+        formData,
+        `Items[${itemIndex}].attributes[${attrIndex}].categoryAttributeId`,
+        attr.categoryAttributeId
+      );
+
+      appendToParamsAndForm(
+        params,
+        formData,
+        `Items[${itemIndex}].attributes[${attrIndex}].value`,
+        attr.value || "Default"
+      );
+    });
+  }
+
+  return { params, formData };
 };
+
+const getCurrentAccountKey = () => {
+  if (typeof window === "undefined") return "guest";
+
+  return String(
+    localStorage.getItem("currentUserEmail") ||
+      sessionStorage.getItem("currentUserEmail") ||
+      localStorage.getItem("pendingEmail") ||
+      sessionStorage.getItem("pendingEmail") ||
+      "guest"
+  )
+    .trim()
+    .toLowerCase();
+};
+
+const CREATED_AUCTIONS_CACHE_KEY = `created_auctions_cache:${getCurrentAccountKey()}`;
 
 const getResponseId = (data) => {
   const root = pickObject(data);
@@ -653,8 +710,7 @@ const rememberCreatedAuction = (payload, responseData) => {
     if (cached.id && Number(item.id) === cached.id) return false;
 
     return !(
-      String(item.title || "").trim().toLowerCase() ===
-        cached.title.toLowerCase() &&
+      String(item.title || "").trim().toLowerCase() === cached.title.toLowerCase() &&
       String(item.description || "").trim().toLowerCase() ===
         cached.description.toLowerCase()
     );
@@ -669,7 +725,7 @@ const normalizeViewItem = (item, fallbackCategoryId, fallbackDescription) => {
   );
 
   return {
-    id: toNumber(firstDefined(item?.id, item?.itemId, item?.ItemId), 0),
+    id: toNumber(firstDefined(item?.id, item?.Id, item?.itemId, item?.ItemId), 0),
     title: toStringValue(firstDefined(item?.title, item?.Title)),
     count: toNumber(firstDefined(item?.count, item?.Count), 1),
     description: toStringValue(
@@ -739,7 +795,7 @@ const normalizeViewItem = (item, fallbackCategoryId, fallbackDescription) => {
   };
 };
 
-const normalizeAuctionView = (data) => {
+const normalizeAuctionView = (data, fallbackId = 0) => {
   const root = pickObject(data);
 
   const itemsRaw = normalizeListResponse(
@@ -758,13 +814,11 @@ const normalizeAuctionView = (data) => {
 
   return {
     id: toNumber(
-      firstDefined(root?.id, root?.auctionId, root?.Id, root?.AuctionId),
-      0
+      firstDefined(root?.id, root?.auctionId, root?.Id, root?.AuctionId, fallbackId),
+      fallbackId
     ),
     title: toStringValue(firstDefined(root?.title, root?.Title)),
-    description: toStringValue(
-      firstDefined(root?.description, root?.Description)
-    ),
+    description: toStringValue(firstDefined(root?.description, root?.Description)),
     categoryId: toNumber(
       firstDefined(root?.categoryId, root?.CategoryId, firstItem.categoryId),
       0
@@ -818,6 +872,13 @@ const normalizeAuctionView = (data) => {
       root?.Price,
       firstItem.startingPrice,
       null
+    ),
+    bidIncrement: preferUseful(
+      root?.bidIncrement,
+      root?.BidIncrement,
+      root?.increment,
+      root?.Increment,
+      1
     ),
     currentPrice: preferUseful(
       root?.currentPrice,
@@ -1157,10 +1218,8 @@ const mergeHistoryWithExtra = (historyItem, extraItem) => {
 };
 
 export const getAuctionCategories = async () => {
-  const token = getSellerToken();
-
   const res = await sellerApi.get("/Auction/Get-Categories", {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers: getAuthHeaders(),
   });
 
   return normalizeListResponse(res.data)
@@ -1193,9 +1252,7 @@ export const getCategoryAttributes = async (categoryId) => {
   const res = await sellerApi.get(
     `/Auction/Get-Attributes/${numericCategoryId}`,
     {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: getAuthHeaders(),
     }
   );
 
@@ -1211,36 +1268,35 @@ export const createAuction = async (payload) => {
     throw new Error("Authentication token not found. Please login again.");
   }
 
-  validateCreateAuctionPayload(payload);
+  validateAuctionPayload(payload, { requireDates: true });
 
   try {
-    const queryParams = await buildCreateAuctionParams(payload);
-    const formData = buildCreateAuctionImageFormData(payload);
-    console.log("CREATE AUCTION QUERY STRING:", queryParams.toString());
-
-console.log("CREATE AUCTION QUERY VALUES:", Object.fromEntries(queryParams.entries()));
-
-console.log("CREATE AUCTION FORMDATA VALUES:");
-for (const [key, value] of formData.entries()) {
-  if (value instanceof File) {
-    console.log(key, {
-      fileName: value.name,
-      fileType: value.type,
-      fileSize: value.size,
+    const { params, formData } = await buildAuctionParamsAndFormData(payload, {
+      includeCreateFields: true,
     });
-  } else {
-    console.log(key, value);
-  }
-}
+
+    console.log("CREATE AUCTION QUERY VALUES:", Object.fromEntries(params.entries()));
+    console.log("CREATE AUCTION FORMDATA VALUES:");
+    for (const [key, value] of formData.entries()) {
+      if (value instanceof File) {
+        console.log(key, {
+          fileName: value.name,
+          fileType: value.type,
+          fileSize: value.size,
+        });
+      } else {
+        console.log(key, value);
+      }
+    }
+
     const res = await sellerApi.post(
-      `/Auction/Create-Auction?${queryParams.toString()}`,
+      `/Auction/Create-Auction?${params.toString()}`,
       formData,
       {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: getAuthHeaders(),
       }
     );
+
     console.log("CREATE AUCTION API RESPONSE:", res.data);
 
     rememberCreatedAuction(payload, res?.data);
@@ -1280,9 +1336,7 @@ export const getAuctionHistory = async ({
 
   const res = await sellerApi.get("/Auction/Get-History", {
     params,
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    headers: getAuthHeaders(),
   });
 
   const root = pickObject(res.data);
@@ -1340,6 +1394,7 @@ export const getAuctionHistory = async ({
     ),
   };
 };
+
 export const getAuctionView = async (id) => {
   const token = getSellerToken();
 
@@ -1355,12 +1410,12 @@ export const getAuctionView = async (id) => {
 
   try {
     const res = await sellerApi.get(`/Auction/View/${auctionId}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: getAuthHeaders(),
     });
 
-    return normalizeAuctionView(res.data);
+    console.log("VIEW AUCTION API RESPONSE:", res.data);
+
+    return normalizeAuctionView(res.data, auctionId);
   } catch (error) {
     throw normalizeBackendError(error, "Failed to load auction details.");
   }
@@ -1379,24 +1434,46 @@ export const editAuction = async (id, payload) => {
     throw new Error("Invalid auction id.");
   }
 
-  validateCreateAuctionPayload(payload);
+  validateAuctionPayload(payload, { requireDates: false });
 
   try {
-    const queryParams = await buildCreateAuctionParams(payload);
-    const formData = buildCreateAuctionImageFormData(payload);
+    const { params, formData } = await buildAuctionParamsAndFormData(payload, {
+      includeCreateFields: false,
+    });
+
+    console.log("EDIT AUCTION QUERY VALUES:", Object.fromEntries(params.entries()));
+    console.log("EDIT AUCTION FORMDATA VALUES:");
+    for (const [key, value] of formData.entries()) {
+      if (value instanceof File) {
+        console.log(key, {
+          fileName: value.name,
+          fileType: value.type,
+          fileSize: value.size,
+        });
+      } else {
+        console.log(key, value);
+      }
+    }
 
     const res = await sellerApi.put(
-      `/Auction/edit/${auctionId}?${queryParams.toString()}`,
+      `/Auction/edit/${auctionId}?${params.toString()}`,
       formData,
       {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: getAuthHeaders(),
       }
     );
 
-    return res.data;
+    console.log("EDIT AUCTION API RESPONSE:", res.data);
+
+    return {
+      ...(res?.data && typeof res.data === "object" ? res.data : {}),
+      message:
+        res?.data?.message ||
+        res?.data?.Message ||
+        "Auction updated successfully.",
+    };
   } catch (error) {
+    console.log("EDIT AUCTION ERROR:", error?.response?.data || error);
     throw normalizeBackendError(error, "Failed to update auction.");
   }
 };
@@ -1416,13 +1493,56 @@ export const deleteAuction = async (id) => {
 
   try {
     const res = await sellerApi.delete(`/Auction/Delete/${auctionId}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: getAuthHeaders(),
     });
 
-    return res.data;
+    console.log("DELETE AUCTION API RESPONSE:", res.data);
+
+    return {
+      ...(res?.data && typeof res.data === "object" ? res.data : {}),
+      message:
+        res?.data?.message ||
+        res?.data?.Message ||
+        "Deleted Successfully",
+    };
   } catch (error) {
+    console.log("DELETE AUCTION ERROR:", error?.response?.data || error);
     throw normalizeBackendError(error, "Failed to delete auction.");
   }
+};
+
+export const prepareAuctionForEditForm = (auction) => {
+  return {
+    title: auction?.title || "",
+    description: auction?.description || "",
+    categoryId: Number(auction?.categoryId || 0),
+    categoryName: auction?.categoryName || "",
+    image: null,
+    existingImage: auction?.image || "",
+    startingPrice: Number(auction?.startingPrice || 0),
+    bidIncrement: Number(auction?.bidIncrement || 1),
+    startDate: formatInputDateTime(auction?.startDate),
+    endDate: formatInputDateTime(auction?.endDate),
+    items: Array.isArray(auction?.items)
+      ? auction.items.map((item) => ({
+          id: Number(item?.id || 0),
+          title: item?.title || "",
+          description: item?.description || "",
+          count: Number(item?.count || 1),
+          condition: Number(item?.condition || 1),
+          warrantyInfo: item?.warrantyInfo || "",
+          categoryId: Number(item?.categoryId || auction?.categoryId || 0),
+          image: null,
+          images: [],
+          existingImages: Array.isArray(item?.images) ? item.images : [],
+          attributes: Array.isArray(item?.attributes)
+            ? item.attributes.map((attr) => ({
+                categoryAttributeId: Number(attr?.categoryAttributeId || attr?.id || 0),
+                name: attr?.name || "",
+                value: attr?.value || "",
+              }))
+            : [],
+        }))
+      : [],
+  };
 };

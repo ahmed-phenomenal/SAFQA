@@ -29,7 +29,8 @@ export default function HowToBid() {
   }, []);
 
   return (
-    <div className="legal-page" dir={isArabic ? "rtl" : "ltr"}>
+    <div className="container legal-wrapper">
+        <div className="legal-page" dir={isArabic ? "rtl" : "ltr"}>
       <div className="legal-container">
         <h1 className="legal-title" dir="auto">
           {tr("howToBid.pageTitle", "How To Bid")}
@@ -215,5 +216,7 @@ export default function HowToBid() {
         </div>
       </div>
     </div>
+    </div>
+    
   );
 }

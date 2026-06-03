@@ -24,7 +24,8 @@ export default function Terms_Conditions() {
   }, []);
 
   return (
-    <div className="container terms-page" dir={isArabic ? "rtl" : "ltr"}>
+    <div className="container legal-wrapper">
+        <div className="container terms-page" dir={isArabic ? "rtl" : "ltr"}>
       <h1 className="terms-title">{t("terms.title", "Terms & Conditions")}</h1>
 
       <div className="forms terms-card">
@@ -137,5 +138,7 @@ export default function Terms_Conditions() {
         <p className="terms-paragraph">{t("terms.policies.changes.desc")}</p>
       </div>
     </div>
+    </div>
+    
   );
 }

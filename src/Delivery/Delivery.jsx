@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import icon from "../assets/cargo-truck.png";
+import { setLanguage } from "../utiles/setLanguage";
+import { applyTheme, getSavedTheme, saveTheme } from "../utiles/themeManager";
 import {
   requestDeliveryLoginOtp,
   verifyDeliveryLoginOtp,
@@ -53,15 +55,8 @@ const saveDeliveryDraft = (auctionId, patch) => {
   try {
     const id = Number(auctionId || 0);
     if (!id) return false;
-
     const drafts = readDeliveryDrafts();
-
-    drafts[id] = {
-      ...(drafts[id] || {}),
-      ...patch,
-      updatedAt: new Date().toISOString(),
-    };
-
+    drafts[id] = { ...(drafts[id] || {}), ...patch, updatedAt: new Date().toISOString() };
     localStorage.setItem(DELIVERY_DRAFT_KEY, JSON.stringify(drafts));
     return true;
   } catch {
@@ -69,116 +64,62 @@ const saveDeliveryDraft = (auctionId, patch) => {
   }
 };
 
-const fileToDataUrl = (file) => {
-  return new Promise((resolve, reject) => {
+const fileToDataUrl = (file) =>
+  new Promise((resolve, reject) => {
     const reader = new FileReader();
-
     reader.onload = () => resolve(reader.result);
     reader.onerror = () => reject(new Error("Failed to read image."));
-
     reader.readAsDataURL(file);
   });
-};
 
 const dataUrlToFile = (dataUrl, filename, mimeType) => {
   const parts = String(dataUrl || "").split(",");
   const header = parts[0] || "";
   const base64 = parts[1] || "";
   const mime = mimeType || header.match(/:(.*?);/)?.[1] || "image/jpeg";
-
   const binary = atob(base64);
-  const length = binary.length;
-  const bytes = new Uint8Array(length);
-
-  for (let i = 0; i < length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return new File([bytes], filename || "delivery-photo.jpg", { type: mime });
 };
 
 const normalizePhone = (value) => {
-  let phone = String(value || "").trim();
-
-  phone = phone.replace(/[^\d+]/g, "");
-
-  if (phone.startsWith("00")) {
-    phone = `+${phone.slice(2)}`;
-  }
-
-  if (phone.includes("+")) {
-    phone = `+${phone.replace(/\+/g, "")}`;
-  }
-
+  let phone = String(value || "").trim().replace(/[^\d+]/g, "");
+  if (phone.startsWith("00")) phone = `+${phone.slice(2)}`;
+  if (phone.includes("+")) phone = `+${phone.replace(/\+/g, "")}`;
   return phone.slice(0, 16);
 };
 
 const getCountryCodeFromPhone = (phone) => {
   const digits = String(phone || "").replace(/\D/g, "");
-
-  for (let len = 3; len >= 1; len -= 1) {
+  for (let len = 3; len >= 1; len--) {
     const code = digits.slice(0, len);
     if (COUNTRY_CODES.has(code)) return code;
   }
-
   return "";
 };
 
 const validateInternationalPhone = (value) => {
   const phone = normalizePhone(value);
-
-  if (!phone) {
-    return "Contact number is required.";
-  }
-
-  if (!phone.startsWith("+")) {
-    return "Contact number must start with country code, for example +201001234567.";
-  }
-
-  if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
-    return "Contact number must be valid international format, 8 to 15 digits after country code.";
-  }
-
+  if (!phone) return "Contact number is required.";
+  if (!phone.startsWith("+")) return "Contact number must start with country code, for example +201001234567.";
+  if (!/^\+[1-9]\d{7,14}$/.test(phone)) return "Contact number must be valid international format, 8 to 15 digits after country code.";
   const countryCode = getCountryCodeFromPhone(phone);
-
-  if (!countryCode) {
-    return "Invalid country code.";
-  }
-
+  if (!countryCode) return "Invalid country code.";
   const nationalNumber = phone.replace("+", "").slice(countryCode.length);
-
-  if (nationalNumber.length < 6) {
-    return "Phone number is too short after country code.";
-  }
-
-  if (/^(\d)\1+$/.test(nationalNumber)) {
-    return "Phone number cannot contain the same repeated digit only.";
-  }
-
+  if (nationalNumber.length < 6) return "Phone number is too short after country code.";
+  if (/^(\d)\1+$/.test(nationalNumber)) return "Phone number cannot contain the same repeated digit only.";
   return "";
 };
 
 const validateImageFile = (file) => {
   if (!file) return "Please choose image.";
-
   const name = String(file.name || "").toLowerCase();
   const type = String(file.type || "").toLowerCase();
-
-  const isValidExtension =
-    name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg");
-
+  const isValidExtension = name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg");
   const isValidType = type === "image/png" || type === "image/jpeg" || type === "";
-
-  if (!isValidExtension || !isValidType) {
-    return "Only PNG, JPG, or JPEG images are allowed.";
-  }
-
-  const sizeMb = file.size / (1024 * 1024);
-
-  if (sizeMb > MAX_IMAGE_SIZE_MB) {
-    return `Each image must be ${MAX_IMAGE_SIZE_MB} MB or less.`;
-  }
-
+  if (!isValidExtension || !isValidType) return "Only PNG, JPG, or JPEG images are allowed.";
+  if (file.size / (1024 * 1024) > MAX_IMAGE_SIZE_MB) return `Each image must be ${MAX_IMAGE_SIZE_MB} MB or less.`;
   return "";
 };
 
@@ -187,6 +128,9 @@ export default function Delivery() {
   const isArabic = i18n.language === "ar";
   const navigate = useNavigate();
   const location = useLocation();
+
+  const [theme, setTheme] = useState(() => getSavedTheme());
+  const darkModeActive = theme === "dark";
 
   const [otp, setOtp] = useState("");
   const [error, setError] = useState("");
@@ -203,11 +147,7 @@ export default function Delivery() {
   const [activeDelivery, setActiveDelivery] = useState(null);
   const [modalBusy, setModalBusy] = useState(false);
   const [wizardData, setWizardData] = useState({
-    contact: "",
-    code: "",
-    codeVerified: false,
-    imageFiles: [],
-    savedImages: [],
+    contact: "", code: "", codeVerified: false, imageFiles: [], savedImages: [],
   });
 
   const localProgress = useMemo(
@@ -215,48 +155,34 @@ export default function Delivery() {
     [deliveries, rowLoadingId, progressVersion]
   );
 
+  useEffect(() => { applyTheme(theme); }, [theme]);
+
+  const toggleDarkMode = () => {
+    const nextTheme = darkModeActive ? "light" : "dark";
+    setTheme(nextTheme); saveTheme(nextTheme); applyTheme(nextTheme);
+  };
+
   useEffect(() => {
-    document.title = t("deliveryAccessDocTitle", {
-      defaultValue: "Delivery Access",
-    });
+    document.title = t("deliveryAccessDocTitle", { defaultValue: "Delivery Access" });
   }, [t]);
 
   useEffect(() => {
-    const link = document.querySelector("link[rel~='icon']");
-    if (link) {
-      link.href = icon;
-    } else {
-      const newLink = document.createElement("link");
-      newLink.rel = "icon";
-      newLink.href = icon;
-      document.head.appendChild(newLink);
-    }
+    const link = document.querySelector("link[rel~='icon']") || document.createElement("link");
+    link.rel = "icon"; link.href = icon; document.head.appendChild(link);
   }, []);
 
   useEffect(() => {
     if (!error && !info) return;
-
-    const timer = setTimeout(() => {
-      setError("");
-      setInfo("");
-    }, 15000);
-
+    const timer = setTimeout(() => { setError(""); setInfo(""); }, 15000);
     return () => clearTimeout(timer);
   }, [error, info]);
 
   useEffect(() => {
     const emailFromState = String(location?.state?.sellerEmail || "").trim();
-    const emailFromQuery =
-      new URLSearchParams(location.search).get("email") || "";
+    const emailFromQuery = new URLSearchParams(location.search).get("email") || "";
     const savedEmail = getDeliverySessionEmail() || "";
-
     setDeliveryEmail(emailFromState || emailFromQuery || savedEmail || "");
-
-    const savedUnlocked = sessionStorage.getItem("delivery_access_unlocked");
-
-    if (savedUnlocked === "true") {
-      setIsUnlocked(true);
-    }
+    if (sessionStorage.getItem("delivery_access_unlocked") === "true") setIsUnlocked(true);
   }, [location.state, location.search]);
 
   const refreshDeliveries = async () => {
@@ -266,31 +192,18 @@ export default function Delivery() {
 
   useEffect(() => {
     if (!isUnlocked) return;
-
     const load = async () => {
       try {
-        setLoading(true);
-        setError("");
+        setLoading(true); setError("");
         await refreshDeliveries();
       } catch (err) {
-        setError(
-          err?.response?.data?.message ||
-            err?.message ||
-            t("failedToLoadDeliveryOrders", {
-              defaultValue: "Failed to load delivery orders.",
-            })
-        );
-      } finally {
-        setLoading(false);
-      }
+        setError(err?.response?.data?.message || err?.message || t("failedToLoadDeliveryOrders", { defaultValue: "Failed to load delivery orders." }));
+      } finally { setLoading(false); }
     };
-
     load();
   }, [isUnlocked, t]);
 
-  const getAuctionId = (item) => {
-    return Number(item?.auctionId || item?.AuctionId || item?.id || item?.Id || 0);
-  };
+  const getAuctionId = (item) => Number(item?.auctionId || item?.AuctionId || item?.id || item?.Id || 0);
 
   const getEffectiveStatus = (item) => {
     const auctionId = getAuctionId(item);
@@ -299,406 +212,181 @@ export default function Delivery() {
   };
 
   const handleRequestOtp = async () => {
+    const emailToUse = String(deliveryEmail || "").trim();
+    if (!emailToUse) { setError(t("sellerEmailRequired", { defaultValue: "Seller email is required." })); return; }
     try {
-      const emailToUse = String(deliveryEmail || "").trim();
-
-      if (!emailToUse) {
-        setError(
-          t("sellerEmailRequired", { defaultValue: "Seller email is required." })
-        );
-        return;
-      }
-
-      setLoading(true);
-      setError("");
-      setInfo("");
-
+      setLoading(true); setError(""); setInfo("");
       await requestDeliveryLoginOtp(emailToUse);
-
-      setInfo(
-        t("otpSentTo", {
-          email: emailToUse,
-          defaultValue: `OTP sent to ${emailToUse}`,
-        })
-      );
+      setInfo(t("otpSentTo", { email: emailToUse, defaultValue: `OTP sent to ${emailToUse}` }));
     } catch (err) {
-      setError(
-        err?.response?.data?.message ||
-          err?.message ||
-          t("failedToSendOtp", { defaultValue: "Failed to send OTP." })
-      );
-    } finally {
-      setLoading(false);
-    }
+      setError(err?.response?.data?.message || err?.message || t("failedToSendOtp", { defaultValue: "Failed to send OTP." }));
+    } finally { setLoading(false); }
   };
 
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
-
-    if (!deliveryEmail.trim()) {
-      setError(
-        t("sellerEmailMissing", { defaultValue: "Seller email is missing." })
-      );
-      return;
-    }
-
-    if (String(otp).trim().length !== 6) {
-      setError(t("otpMustBe6Digits", { defaultValue: "OTP must be 6 digits." }));
-      return;
-    }
-
+    if (!deliveryEmail.trim()) { setError(t("sellerEmailMissing", { defaultValue: "Seller email is missing." })); return; }
+    if (String(otp).trim().length !== 6) { setError(t("otpMustBe6Digits", { defaultValue: "OTP must be 6 digits." })); return; }
     try {
-      setLoading(true);
-      setError("");
-      setInfo("");
-
-      await verifyDeliveryLoginOtp({
-        email: deliveryEmail.trim(),
-        code: otp.trim(),
-      });
-
+      setLoading(true); setError(""); setInfo("");
+      await verifyDeliveryLoginOtp({ email: deliveryEmail.trim(), code: otp.trim() });
       sessionStorage.setItem("delivery_access_unlocked", "true");
       setIsUnlocked(true);
-      setInfo(
-        t("otpVerifiedSuccessfully", {
-          defaultValue: "OTP verified successfully.",
-        })
-      );
+      setInfo(t("otpVerifiedSuccessfully", { defaultValue: "OTP verified successfully." }));
     } catch (err) {
-      setError(
-        err?.response?.data?.message ||
-          err?.message ||
-          t("invalidOtp", { defaultValue: "Invalid OTP." })
-      );
-    } finally {
-      setLoading(false);
-    }
+      setError(err?.response?.data?.message || err?.message || t("invalidOtp", { defaultValue: "Invalid OTP." }));
+    } finally { setLoading(false); }
   };
 
   const handleLogout = () => {
     logoutDeliverySession();
     sessionStorage.removeItem("delivery_access_unlocked");
-    setIsUnlocked(false);
-    setOtp("");
-    setError("");
-    setInfo("");
-    setDeliveries([]);
-    setShowCheckModal(false);
-    setActiveDelivery(null);
+    setIsUnlocked(false); setOtp(""); setError(""); setInfo("");
+    setDeliveries([]); setShowCheckModal(false); setActiveDelivery(null);
   };
 
   const openCheckModal = (item) => {
     const auctionId = getAuctionId(item);
-
-    if (!auctionId) {
-      setError("Auction ID is missing.");
-      return;
-    }
-
+    if (!auctionId) { setError("Auction ID is missing."); return; }
     const savedDraft = readDeliveryDrafts()[auctionId] || {};
     const progress = getLocalDeliveryProgress()[auctionId] || {};
-
-    setError("");
-    setInfo("");
-    setActiveDelivery(item);
+    setError(""); setInfo(""); setActiveDelivery(item);
     setWizardData({
       contact: String(savedDraft.contact || progress.contact || ""),
       code: String(savedDraft.code || progress.code || ""),
       codeVerified: Boolean(savedDraft.codeVerified || progress.codeVerified),
       imageFiles: [],
-      savedImages: Array.isArray(savedDraft.savedImages)
-        ? savedDraft.savedImages
-        : [],
+      savedImages: Array.isArray(savedDraft.savedImages) ? savedDraft.savedImages : [],
     });
     setShowCheckModal(true);
   };
 
-  const closeCheckModal = () => {
-    setShowCheckModal(false);
-    setActiveDelivery(null);
-    setModalBusy(false);
-  };
+  const closeCheckModal = () => { setShowCheckModal(false); setActiveDelivery(null); setModalBusy(false); };
 
   const handleContactChange = (value) => {
     const auctionId = getAuctionId(activeDelivery);
     const clean = normalizePhone(value);
-
-    setWizardData((prev) => ({
-      ...prev,
-      contact: clean,
-    }));
-
-    saveDeliveryDraft(auctionId, {
-      contact: clean,
-    });
+    setWizardData((prev) => ({ ...prev, contact: clean }));
+    saveDeliveryDraft(auctionId, { contact: clean });
   };
 
   const handleCodeChange = (value) => {
     const auctionId = getAuctionId(activeDelivery);
-    const clean = String(value || "").replace(/\D/g, "").slice(0, 20);
-
-    setWizardData((prev) => ({
-      ...prev,
-      code: clean,
-      codeVerified: false,
-    }));
-
-    saveDeliveryDraft(auctionId, {
-      code: clean,
-      codeVerified: false,
-    });
+    const clean = String(value || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 30);
+    setWizardData((prev) => ({ ...prev, code: clean, codeVerified: false }));
+    saveDeliveryDraft(auctionId, { code: clean, codeVerified: false });
   };
 
   const handleImagesChange = async (files) => {
     const auctionId = getAuctionId(activeDelivery);
     const selectedFiles = Array.from(files || []);
-
     if (!selectedFiles.length) return;
-
     for (const file of selectedFiles) {
-      const validationMessage = validateImageFile(file);
-
-      if (validationMessage) {
-        setError(validationMessage);
-        return;
-      }
+      const msg = validateImageFile(file);
+      if (msg) { setError(msg); return; }
     }
-
     try {
       const savedImages = [];
-
       for (const file of selectedFiles) {
         const dataUrl = await fileToDataUrl(file);
-
-        savedImages.push({
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          dataUrl,
-        });
+        savedImages.push({ name: file.name, type: file.type, size: file.size, dataUrl });
       }
-
-      setWizardData((prev) => ({
-        ...prev,
-        imageFiles: selectedFiles,
-        savedImages,
-      }));
-
-      const saved = saveDeliveryDraft(auctionId, {
-        savedImages,
-      });
-
-      if (!saved) {
-        setError(
-          "Images selected, but they could not be saved locally. You may need to choose them again if you close the page."
-        );
-      } else {
-        setError("");
-      }
-    } catch {
-      setError("Failed to read images.");
-    }
+      setWizardData((prev) => ({ ...prev, imageFiles: selectedFiles, savedImages }));
+      const saved = saveDeliveryDraft(auctionId, { savedImages });
+      if (!saved) setError("Images selected, but they could not be saved locally.");
+      else setError("");
+    } catch { setError("Failed to read images."); }
   };
 
   const handleModalStep2 = async () => {
     const auctionId = getAuctionId(activeDelivery);
-
     try {
       if (!auctionId) throw new Error("Auction ID is missing.");
-
-      setModalBusy(true);
-      setRowLoadingId(auctionId);
-      setError("");
-      setInfo("");
-
+      setModalBusy(true); setRowLoadingId(auctionId); setError(""); setInfo("");
       await completeDeliveryStep2(auctionId);
-
       setProgressVersion((prev) => prev + 1);
       await refreshDeliveries();
-
       setInfo("Order checked successfully.");
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || "Failed step 2.");
-    } finally {
-      setModalBusy(false);
-      setRowLoadingId(0);
-    }
+    } finally { setModalBusy(false); setRowLoadingId(0); }
   };
 
   const handleModalStep3Contact = async () => {
     const auctionId = getAuctionId(activeDelivery);
     const contact = normalizePhone(wizardData.contact);
-
     try {
       if (!auctionId) throw new Error("Auction ID is missing.");
-
-      const validationMessage = validateInternationalPhone(contact);
-
-      if (validationMessage) {
-        throw new Error(validationMessage);
-      }
-
-      setModalBusy(true);
-      setRowLoadingId(auctionId);
-      setError("");
-      setInfo("");
-
-      await completeDeliveryStep3({
-        auctionId,
-        contact,
-      });
-
-      saveDeliveryDraft(auctionId, {
-        contact,
-      });
-
+      const msg = validateInternationalPhone(contact);
+      if (msg) throw new Error(msg);
+      setModalBusy(true); setRowLoadingId(auctionId); setError(""); setInfo("");
+      await completeDeliveryStep3({ auctionId, contact });
+      saveDeliveryDraft(auctionId, { contact });
       setProgressVersion((prev) => prev + 1);
       await refreshDeliveries();
-
       setInfo("Contact submitted successfully.");
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || "Failed step 3.");
-    } finally {
-      setModalBusy(false);
-      setRowLoadingId(0);
-    }
+    } finally { setModalBusy(false); setRowLoadingId(0); }
   };
 
   const handleVerifyUserCode = () => {
     const auctionId = getAuctionId(activeDelivery);
-    const enteredCode = String(wizardData.code || "").trim();
-    const expectedCode = String(
-      activeDelivery?.code || activeDelivery?.Code || ""
-    ).trim();
-
+    const enteredCode = String(wizardData.code || "").trim().toUpperCase();
+    const expectedCode = String(activeDelivery?.code || activeDelivery?.Code || "").trim().toUpperCase();
     try {
       if (!auctionId) throw new Error("Auction ID is missing.");
-
-      if (!enteredCode) {
-        throw new Error("Please enter user delivery code.");
-      }
-
-      if (!/^\d+$/.test(enteredCode)) {
-        throw new Error("Delivery code must be numbers only.");
-      }
-
-      if (!expectedCode) {
-        throw new Error("Delivery code was not returned from API. Cannot verify code.");
-      }
-
-      if (enteredCode !== expectedCode) {
-        throw new Error("Delivery code is incorrect.");
-      }
-
-      setWizardData((prev) => ({
-        ...prev,
-        codeVerified: true,
-      }));
-
-      saveDeliveryDraft(auctionId, {
-        code: enteredCode,
-        codeVerified: true,
-      });
-
-      saveLocalDeliveryProgress(auctionId, {
-        code: enteredCode,
-        codeVerified: true,
-      });
-
+      if (!enteredCode) throw new Error("Please enter user delivery code.");
+      if (!/^[a-zA-Z0-9]+$/.test(enteredCode)) throw new Error("Delivery code must contain letters and numbers only.");
+      if (!expectedCode) throw new Error("Delivery code was not returned from API. Cannot verify code.");
+      if (enteredCode !== expectedCode) throw new Error("Delivery code is incorrect.");
+      setWizardData((prev) => ({ ...prev, code: enteredCode, codeVerified: true }));
+      saveDeliveryDraft(auctionId, { code: enteredCode, codeVerified: true });
+      saveLocalDeliveryProgress(auctionId, { code: enteredCode, codeVerified: true });
       setProgressVersion((prev) => prev + 1);
-      setError("");
-      setInfo("Delivery code verified successfully.");
-    } catch (err) {
-      setError(err?.message || "Failed to verify delivery code.");
-    }
+      setError(""); setInfo("Delivery code verified successfully.");
+    } catch (err) { setError(err?.message || "Failed to verify delivery code."); }
   };
 
   const handleModalStep4Images = async () => {
     const auctionId = getAuctionId(activeDelivery);
-
     try {
       if (!auctionId) throw new Error("Auction ID is missing.");
-
       const progress = getLocalDeliveryProgress()[auctionId] || {};
       const codeVerified = Boolean(wizardData.codeVerified || progress.codeVerified);
-
-      if (!codeVerified) {
-        throw new Error("Please verify user delivery code first.");
-      }
-
+      if (!codeVerified) throw new Error("Please verify user delivery code first.");
       let imagesToUpload = wizardData.imageFiles;
-
       if ((!imagesToUpload || !imagesToUpload.length) && wizardData.savedImages.length) {
-        imagesToUpload = wizardData.savedImages.map((img) =>
-          dataUrlToFile(img.dataUrl, img.name, img.type)
-        );
+        imagesToUpload = wizardData.savedImages.map((img) => dataUrlToFile(img.dataUrl, img.name, img.type));
       }
-
-      if (!imagesToUpload || !imagesToUpload.length) {
-        throw new Error("Please choose at least one image.");
-      }
-
+      if (!imagesToUpload || !imagesToUpload.length) throw new Error("Please choose at least one image.");
       for (const image of imagesToUpload) {
-        const validationMessage = validateImageFile(image);
-
-        if (validationMessage) {
-          throw new Error(validationMessage);
-        }
+        const msg = validateImageFile(image);
+        if (msg) throw new Error(msg);
       }
-
-      setModalBusy(true);
-      setRowLoadingId(auctionId);
-      setError("");
-      setInfo("");
-
-      await completeDeliveryStep4({
-        auctionId,
-        images: imagesToUpload,
-      });
-
-      saveDeliveryDraft(auctionId, {
-        savedImages: wizardData.savedImages,
-      });
-
+      setModalBusy(true); setRowLoadingId(auctionId); setError(""); setInfo("");
+      await completeDeliveryStep4({ auctionId, images: imagesToUpload });
+      saveDeliveryDraft(auctionId, { savedImages: wizardData.savedImages });
       setProgressVersion((prev) => prev + 1);
       await refreshDeliveries();
-
       setInfo("Delivery completed successfully.");
     } catch (err) {
       setError(err?.response?.data?.message || err?.message || "Failed step 4.");
-    } finally {
-      setModalBusy(false);
-      setRowLoadingId(0);
-    }
+    } finally { setModalBusy(false); setRowLoadingId(0); }
   };
 
   const handleNotDelivered = async () => {
     const auctionId = getAuctionId(activeDelivery);
-
     try {
       if (!auctionId) throw new Error("Auction ID is missing.");
-
-      setModalBusy(true);
-      setRowLoadingId(auctionId);
-      setError("");
-      setInfo("");
-
+      setModalBusy(true); setRowLoadingId(auctionId); setError(""); setInfo("");
       await completeDeliveryStep5NotCompleted(auctionId);
-
       setProgressVersion((prev) => prev + 1);
       await refreshDeliveries();
-
       setInfo("Delivery marked as not delivered.");
     } catch (err) {
-      setError(
-        err?.response?.data?.message ||
-          err?.message ||
-          "Failed to mark delivery as not delivered."
-      );
-    } finally {
-      setModalBusy(false);
-      setRowLoadingId(0);
-    }
+      setError(err?.response?.data?.message || err?.message || "Failed to mark delivery as not delivered.");
+    } finally { setModalBusy(false); setRowLoadingId(0); }
   };
 
   const formatMoney = (value) => {
@@ -709,42 +397,60 @@ export default function Delivery() {
 
   const getDeliveryStatusLabel = (status) => {
     const s = Number(status || 0);
-
     if (s === 1) return t("orderPlaced", { defaultValue: "Order placed" });
     if (s === 2) return t("inProgress", { defaultValue: "In progress" });
     if (s === 3) return t("shipping", { defaultValue: "Shipping" });
     if (s === 4) return t("delivered", { defaultValue: "Delivered" });
     if (s === 5) return t("notDelivered", { defaultValue: "Not delivered" });
-
     return t("unknown", { defaultValue: "Unknown" });
   };
 
   const filteredDeliveries = deliveries.filter((item) => {
     const term = search.trim().toLowerCase();
     if (!term) return true;
-
     return (
       String(item?.auctionTitle || "").toLowerCase().includes(term) ||
       String(item?.userEmail || "").toLowerCase().includes(term) ||
       String(item?.userNumber || "").toLowerCase().includes(term) ||
       String(item?.finalPrice || "").toLowerCase().includes(term) ||
-      String(getDeliveryStatusLabel(getEffectiveStatus(item)))
-        .toLowerCase()
-        .includes(term)
+      String(getDeliveryStatusLabel(getEffectiveStatus(item))).toLowerCase().includes(term)
     );
   });
 
   const activeAuctionId = getAuctionId(activeDelivery);
   const activeStatus = activeDelivery ? getEffectiveStatus(activeDelivery) : 1;
-  const activeProgress = activeAuctionId
-    ? localProgress[activeAuctionId] || {}
-    : {};
+  const activeProgress = activeAuctionId ? localProgress[activeAuctionId] || {} : {};
   const codeVerified = Boolean(wizardData.codeVerified || activeProgress.codeVerified);
+
+  // ── NAVBAR (shared between login and dashboard views) ──
+  const Navbar = () => (
+    <header className="dv-navbar">
+      <div className="dv-navbar-left">
+        <div className="dv-brand">
+          <i className="fa fa-truck" />
+          <span>Safqa Delivery</span>
+        </div>
+      </div>
+      <div className="dv-navbar-right">
+        <button
+          className="dv-nav-icon-btn"
+          onClick={() => setLanguage(isArabic ? "en" : "ar")}
+          type="button"
+        >
+          {isArabic ? "EN" : "ع"}
+        </button>
+        <button className="dv-nav-icon-btn" onClick={toggleDarkMode} type="button">
+          <i className={`fa-solid ${darkModeActive ? "fa-sun" : "fa-moon"}`} />
+        </button>
+      </div>
+    </header>
+  );
 
   if (!isUnlocked) {
     return (
-      <div className="delivery-page" dir={isArabic ? "rtl" : "ltr"}>
+      <div className={`delivery-page ${darkModeActive ? "dark-delivery" : ""}`} dir={isArabic ? "rtl" : "ltr"}>
         <style>{deliveryStyles}</style>
+        <Navbar />
 
         <div className="delivery-login-card">
           <h1 className="delivery-title">
@@ -753,8 +459,7 @@ export default function Delivery() {
 
           <p className="delivery-text">
             {t("deliveryAccessMessage", {
-              defaultValue:
-                "Enter seller email, send OTP, then verify it to open delivery orders.",
+              defaultValue: "Enter seller email, send OTP, then verify it to open delivery orders.",
             })}
           </p>
 
@@ -764,55 +469,29 @@ export default function Delivery() {
           <input
             type="email"
             value={deliveryEmail}
-            onChange={(e) => {
-              setDeliveryEmail(e.target.value);
-              setError("");
-            }}
+            onChange={(e) => { setDeliveryEmail(e.target.value); setError(""); }}
             placeholder={t("sellerEmail", { defaultValue: "Seller email" })}
             className="delivery-input"
           />
 
-          <button
-            className="delivery-primary-btn"
-            onClick={handleRequestOtp}
-            disabled={loading}
-            type="button"
-          >
-            {loading
-              ? t("sending", { defaultValue: "Sending..." })
-              : t("sendOtp", { defaultValue: "Send OTP" })}
+          <button className="delivery-primary-btn" onClick={handleRequestOtp} disabled={loading} type="button">
+            {loading ? t("sending", { defaultValue: "Sending..." }) : t("sendOtp", { defaultValue: "Send OTP" })}
           </button>
 
           <form onSubmit={handleVerifyOtp}>
             <input
               type="text"
               value={otp}
-              onChange={(e) => {
-                setOtp(e.target.value.replace(/\D/g, "").slice(0, 6));
-                setError("");
-              }}
-              placeholder={t("otpPlaceholder", {
-                defaultValue: "Enter 6-digit OTP",
-              })}
+              onChange={(e) => { setOtp(e.target.value.replace(/\D/g, "").slice(0, 6)); setError(""); }}
+              placeholder={t("otpPlaceholder", { defaultValue: "Enter 6-digit OTP" })}
               className="delivery-input"
             />
-
-            <button
-              type="submit"
-              className="delivery-primary-btn"
-              disabled={loading}
-            >
-              {loading
-                ? t("verifying", { defaultValue: "Verifying..." })
-                : t("verifyOtp", { defaultValue: "Verify OTP" })}
+            <button type="submit" className="delivery-primary-btn" disabled={loading}>
+              {loading ? t("verifying", { defaultValue: "Verifying..." }) : t("verifyOtp", { defaultValue: "Verify OTP" })}
             </button>
           </form>
 
-          <button
-            className="delivery-secondary-btn"
-            type="button"
-            onClick={() => navigate("/login")}
-          >
+          <button className="delivery-secondary-btn" type="button" onClick={() => navigate("/login")}>
             {t("goToLogin", { defaultValue: "Go to Login" })}
           </button>
         </div>
@@ -821,30 +500,34 @@ export default function Delivery() {
   }
 
   return (
-    <div className="delivery-dashboard" dir={isArabic ? "rtl" : "ltr"}>
+    <div className={`delivery-dashboard ${darkModeActive ? "dark-delivery" : ""}`} dir={isArabic ? "rtl" : "ltr"}>
       <style>{deliveryStyles}</style>
+      <Navbar />
 
       <div className="delivery-container">
         <h2 className="delivery-main-title">
           {t("deliveryDashboard", { defaultValue: "Delivery Dashboard" })}
         </h2>
 
+        {/* ── TOP BAR: search | email (full, no clip) | logout ── */}
         <div className="delivery-top">
           <input
             type="text"
             className="delivery-search"
-            placeholder={t("searchDeliveries", {
-              defaultValue: "Search deliveries...",
-            })}
+            placeholder={t("searchDeliveries", { defaultValue: "Search deliveries..." })}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
 
-          <div className="delivery-email-chip">
-            {deliveryEmail || t("delivery", { defaultValue: "Delivery" })}
+          <div className="delivery-email-chip" title={deliveryEmail}>
+            <i className="fa fa-envelope" style={{ marginInlineEnd: 8, flexShrink: 0 }} />
+            <span className="delivery-email-text">
+              {deliveryEmail || t("delivery", { defaultValue: "Delivery" })}
+            </span>
           </div>
 
           <button className="delivery-logout" onClick={handleLogout}>
+            <i className="fa fa-sign-out" style={{ marginInlineEnd: 6 }} />
             {t("logout", { defaultValue: "Logout" })}
           </button>
         </div>
@@ -871,10 +554,7 @@ export default function Delivery() {
                     </div>
 
                     <div className="delivery-card-body">
-                      <h3 className="delivery-card-title">
-                        {item.auctionTitle || "-"}
-                      </h3>
-
+                      <h3 className="delivery-card-title">{item.auctionTitle || "-"}</h3>
                       <p className="delivery-card-desc">
                         {t("deliveryOrder", { defaultValue: "Delivery Order" })}
                       </p>
@@ -883,12 +563,8 @@ export default function Delivery() {
                         <span className="delivery-card-chip">
                           {getDeliveryStatusLabel(statusNumber)}
                         </span>
-                        <span className="delivery-card-chip">
-                          {item.userEmail || "-"}
-                        </span>
-                        <span className="delivery-card-chip">
-                          {item.userNumber || "-"}
-                        </span>
+                        <span className="delivery-card-chip">{item.userEmail || "-"}</span>
+                        <span className="delivery-card-chip">{item.userNumber || "-"}</span>
                       </div>
 
                       <div className="delivery-card-date-row">
@@ -896,18 +572,13 @@ export default function Delivery() {
                           <div className="delivery-info-label">
                             {t("userEmail", { defaultValue: "User Email" })}
                           </div>
-                          <div className="delivery-info-value">
-                            {item.userEmail || "-"}
-                          </div>
+                          <div className="delivery-info-value">{item.userEmail || "-"}</div>
                         </div>
-
                         <div className="delivery-info-box">
                           <div className="delivery-info-label">
                             {t("userNumber", { defaultValue: "User Number" })}
                           </div>
-                          <div className="delivery-info-value">
-                            {item.userNumber || "-"}
-                          </div>
+                          <div className="delivery-info-value">{item.userNumber || "-"}</div>
                         </div>
                       </div>
 
@@ -930,16 +601,12 @@ export default function Delivery() {
                         <div className="delivery-price-label">
                           {t("finalPrice", { defaultValue: "Final Price" })}
                         </div>
-                        <div className="delivery-price-value">
-                          {formatMoney(item.finalPrice)}
-                        </div>
+                        <div className="delivery-price-value">{formatMoney(item.finalPrice)}</div>
                       </div>
-
                       <div className="delivery-status-note">
                         {busy
                           ? t("loading", { defaultValue: "Loading..." })
-                          : t("auctionId", { defaultValue: "Auction ID" }) +
-                            `: ${auctionId}`}
+                          : t("auctionId", { defaultValue: "Auction ID" }) + `: ${auctionId}`}
                       </div>
                     </div>
                   </div>
@@ -963,18 +630,10 @@ export default function Delivery() {
                   {activeDelivery.auctionTitle || "Delivery Steps"}
                 </h3>
                 <p className="delivery-modal-subtitle">
-                  {t("auctionId", { defaultValue: "Auction ID" })}:{" "}
-                  {activeAuctionId}
+                  {t("auctionId", { defaultValue: "Auction ID" })}: {activeAuctionId}
                 </p>
               </div>
-
-              <button
-                type="button"
-                className="delivery-modal-close"
-                onClick={closeCheckModal}
-              >
-                ×
-              </button>
+              <button type="button" className="delivery-modal-close" onClick={closeCheckModal}>×</button>
             </div>
 
             <div className="delivery-modal-current">
@@ -982,17 +641,12 @@ export default function Delivery() {
             </div>
 
             <div className="delivery-step-list">
-              <div
-                className={`delivery-step-card ${
-                  activeStatus >= 2 || activeStatus === 5 ? "done" : "active"
-                }`}
-              >
+              {/* Step 1 */}
+              <div className={`delivery-step-card ${activeStatus >= 2 || activeStatus === 5 ? "done" : "active"}`}>
                 <div className="delivery-step-number">1</div>
-
                 <div className="delivery-step-content">
                   <h4>Order check</h4>
                   <p>Click check to move the delivery from Order placed to In progress.</p>
-
                   <button
                     type="button"
                     className="delivery-action-btn"
@@ -1004,21 +658,12 @@ export default function Delivery() {
                 </div>
               </div>
 
-              <div
-                className={`delivery-step-card ${
-                  activeStatus >= 3 || activeStatus === 5
-                    ? "done"
-                    : activeStatus === 2
-                    ? "active"
-                    : "locked"
-                }`}
-              >
+              {/* Step 2 */}
+              <div className={`delivery-step-card ${activeStatus >= 3 || activeStatus === 5 ? "done" : activeStatus === 2 ? "active" : "locked"}`}>
                 <div className="delivery-step-number">2</div>
-
                 <div className="delivery-step-content">
                   <h4>Delivery contact number</h4>
                   <p>Enter phone number with country code, for example +201001234567.</p>
-
                   <input
                     type="text"
                     inputMode="tel"
@@ -1028,7 +673,6 @@ export default function Delivery() {
                     onChange={(e) => handleContactChange(e.target.value)}
                     disabled={modalBusy || activeStatus < 2 || activeStatus >= 3 || activeStatus === 5}
                   />
-
                   <button
                     type="button"
                     className="delivery-action-btn"
@@ -1040,102 +684,57 @@ export default function Delivery() {
                 </div>
               </div>
 
-              <div
-                className={`delivery-step-card ${
-                  codeVerified || activeStatus >= 4 || activeStatus === 5
-                    ? "done"
-                    : activeStatus === 3
-                    ? "active"
-                    : "locked"
-                }`}
-              >
+              {/* Step 3 */}
+              <div className={`delivery-step-card ${codeVerified || activeStatus >= 4 || activeStatus === 5 ? "done" : activeStatus === 3 ? "active" : "locked"}`}>
                 <div className="delivery-step-number">3</div>
-
                 <div className="delivery-step-content">
                   <h4>User delivery code</h4>
                   <p>Enter the code from the user. Numbers only.</p>
-
                   <input
                     type="text"
-                    inputMode="numeric"
+                    inputMode="text"
+                    autoCapitalize="characters"
                     className="delivery-small-input full"
                     placeholder="Enter user delivery code"
                     value={wizardData.code}
                     onChange={(e) => handleCodeChange(e.target.value)}
-                    disabled={
-                      modalBusy ||
-                      activeStatus < 3 ||
-                      activeStatus >= 4 ||
-                      activeStatus === 5 ||
-                      codeVerified
-                    }
+                    disabled={modalBusy || activeStatus < 3 || activeStatus >= 4 || activeStatus === 5 || codeVerified}
                   />
-
                   <button
                     type="button"
                     className="delivery-action-btn"
                     onClick={handleVerifyUserCode}
-                    disabled={
-                      modalBusy ||
-                      activeStatus < 3 ||
-                      activeStatus >= 4 ||
-                      activeStatus === 5 ||
-                      codeVerified
-                    }
+                    disabled={modalBusy || activeStatus < 3 || activeStatus >= 4 || activeStatus === 5 || codeVerified}
                   >
                     {codeVerified ? "Code Verified" : "Verify Code"}
                   </button>
                 </div>
               </div>
 
-              <div
-                className={`delivery-step-card ${
-                  activeStatus >= 4
-                    ? "done"
-                    : codeVerified && activeStatus === 3
-                    ? "active"
-                    : "locked"
-                }`}
-              >
+              {/* Step 4 */}
+              <div className={`delivery-step-card ${activeStatus >= 4 ? "done" : codeVerified && activeStatus === 3 ? "active" : "locked"}`}>
                 <div className="delivery-step-number">4</div>
-
                 <div className="delivery-step-content">
                   <h4>Delivery image</h4>
                   <p>Upload one or more PNG/JPG images, then complete delivery.</p>
-
                   <input
                     type="file"
                     multiple
                     accept=".png,.jpg,.jpeg,image/png,image/jpeg"
                     className="delivery-file-input full"
-                    disabled={
-                      modalBusy ||
-                      !codeVerified ||
-                      activeStatus < 3 ||
-                      activeStatus >= 4 ||
-                      activeStatus === 5
-                    }
+                    disabled={modalBusy || !codeVerified || activeStatus < 3 || activeStatus >= 4 || activeStatus === 5}
                     onChange={(e) => handleImagesChange(e.target.files)}
                   />
-
                   {wizardData.savedImages.length ? (
                     <div className="delivery-selected-file">
-                      Selected:{" "}
-                      {wizardData.savedImages.map((img) => img.name).join(", ")}
+                      Selected: {wizardData.savedImages.map((img) => img.name).join(", ")}
                     </div>
                   ) : null}
-
                   <button
                     type="button"
                     className="delivery-action-btn"
                     onClick={handleModalStep4Images}
-                    disabled={
-                      modalBusy ||
-                      !codeVerified ||
-                      activeStatus < 3 ||
-                      activeStatus >= 4 ||
-                      activeStatus === 5
-                    }
+                    disabled={modalBusy || !codeVerified || activeStatus < 3 || activeStatus >= 4 || activeStatus === 5}
                   >
                     {activeStatus >= 4 ? "Delivered" : "Upload Image & Complete"}
                   </button>
@@ -1155,15 +754,10 @@ export default function Delivery() {
             </div>
 
             {activeStatus >= 4 ? (
-              <div className="delivery-modal-done">
-                Delivery completed successfully.
-              </div>
+              <div className="delivery-modal-done">Delivery completed successfully.</div>
             ) : null}
-
             {activeStatus === 5 ? (
-              <div className="delivery-modal-failed">
-                Delivery marked as not delivered.
-              </div>
+              <div className="delivery-modal-failed">Delivery marked as not delivered.</div>
             ) : null}
           </div>
         </div>
@@ -1173,14 +767,44 @@ export default function Delivery() {
 }
 
 const deliveryStyles = `
+  /* ── CSS Variables ── */
   .delivery-page,
   .delivery-dashboard {
+    --dv-bg: #f5f6fa;
+    --dv-card: #ffffff;
+    --dv-box: #fafafa;
+    --dv-input: #ffffff;
+    --dv-text: #1f2937;
+    --dv-muted: #667085;
+    --dv-soft: #f1f5f9;
+    --dv-border: #e5e7eb;
+    --dv-blue: #023E8A;
+    --dv-blue-soft: #eaf2ff;
+    --dv-navbar-bg: #023E8A;
+    --dv-navbar-text: #ffffff;
+
     width: 100%;
     min-height: 100vh;
-    padding: 36px 0 60px;
-    background: #f5f6fa;
+    background: var(--dv-bg);
+    color: var(--dv-text);
     box-sizing: border-box;
     font-family: Arial, Helvetica, sans-serif;
+  }
+
+  .delivery-page.dark-delivery,
+  .delivery-dashboard.dark-delivery {
+    --dv-bg: #000000;
+    --dv-card: #151515;
+    --dv-box: #0d0d0d;
+    --dv-input: #000000;
+    --dv-text: #f5f5f5;
+    --dv-muted: #b7b7b7;
+    --dv-soft: #1f1f1f;
+    --dv-border: #2f2f2f;
+    --dv-blue: #4da3ff;
+    --dv-blue-soft: #10243f;
+    --dv-navbar-bg: #0a0a0a;
+    --dv-navbar-text: #f5f5f5;
   }
 
   .delivery-page *,
@@ -1188,12 +812,77 @@ const deliveryStyles = `
     box-sizing: border-box;
   }
 
+  /* ── NAVBAR ── */
+  .dv-navbar {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    width: 100%;
+    height: 64px;
+    background: var(--dv-navbar-bg);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.18);
+  }
+
+  .dv-navbar-left,
+  .dv-navbar-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .dv-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #fff;
+    font-size: 20px;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+  }
+
+  .dv-brand i {
+    font-size: 22px;
+  }
+
+  .dv-nav-icon-btn {
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: #fff;
+    border-radius: 10px;
+    width: 42px;
+    height: 42px;
+    font-size: 15px;
+    font-weight: 800;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+  }
+
+  .dv-nav-icon-btn:hover {
+    background: rgba(255,255,255,0.28);
+  }
+
+  /* ── MAIN CONTENT PADDING ── */
+  .delivery-page > .delivery-login-card,
+  .delivery-dashboard > .delivery-container {
+    padding-top: 36px;
+    padding-bottom: 60px;
+  }
+
+  /* ── LOGIN CARD ── */
   .delivery-login-card {
     width: min(680px, 92%);
-    margin: 40px auto 0;
-    background: #ffffff;
+    margin: 0 auto;
     padding: 28px;
     border-radius: 22px;
+    background: var(--dv-card);
+    border: 1px solid var(--dv-border);
     box-shadow: 0 16px 50px rgba(0,0,0,0.08);
   }
 
@@ -1202,53 +891,67 @@ const deliveryStyles = `
     text-align: center;
     font-size: 36px;
     font-weight: 800;
-    color: #023E8A;
+    color: var(--dv-blue);
     margin: 0 0 20px;
   }
 
-  .delivery-text {
-    color: #667085;
-    font-size: 18px;
-    line-height: 1.6;
-    margin: 0 0 18px;
+  .delivery-text,
+  .delivery-card-desc,
+  .delivery-modal-subtitle,
+  .delivery-step-content p {
+    color: var(--dv-muted);
   }
 
-  .delivery-input {
+  /* ── INPUTS ── */
+  .delivery-input,
+  .delivery-search,
+  .delivery-small-input {
     width: 100%;
     height: 56px;
-    border: 1px solid #dcdcdc;
+    border: 1px solid var(--dv-border);
     border-radius: 14px;
     padding: 0 16px;
     font-size: 16px;
     outline: none;
     margin-bottom: 14px;
-    background: #fff;
+    background: var(--dv-input);
+    color: var(--dv-text);
   }
 
-  .delivery-input:focus {
-    border-color: #023E8A;
+  .delivery-input:focus,
+  .delivery-search:focus,
+  .delivery-small-input:focus {
+    border-color: var(--dv-blue);
+  }
+
+  /* ── BUTTONS ── */
+  .delivery-primary-btn,
+  .delivery-secondary-btn,
+  .delivery-action-btn,
+  .delivery-danger-btn {
+    border: none;
+    border-radius: 14px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .delivery-primary-btn,
+  .delivery-action-btn {
+    background: var(--dv-blue);
+    color: #fff;
   }
 
   .delivery-primary-btn,
   .delivery-secondary-btn {
     width: 100%;
     min-height: 54px;
-    border: none;
-    border-radius: 14px;
     font-size: 16px;
-    font-weight: 800;
-    cursor: pointer;
     margin-bottom: 14px;
   }
 
-  .delivery-primary-btn {
-    background: #023E8A;
-    color: #fff;
-  }
-
   .delivery-secondary-btn {
-    background: #eaf2ff;
-    color: #023E8A;
+    background: var(--dv-blue-soft);
+    color: var(--dv-blue);
   }
 
   .delivery-primary-btn:disabled,
@@ -1258,6 +961,7 @@ const deliveryStyles = `
     cursor: not-allowed;
   }
 
+  /* ── ALERTS ── */
   .delivery-error {
     background: #fff1f0;
     color: #cf1322;
@@ -1281,60 +985,85 @@ const deliveryStyles = `
     margin-bottom: 16px;
   }
 
+  .dark-delivery .delivery-error {
+    background: #2a0f12;
+    color: #ff9aa2;
+    border-color: #6b252b;
+  }
+
+  .dark-delivery .delivery-success {
+    background: #102315;
+    color: #8ff0a4;
+    border-color: #285f35;
+  }
+
+  /* ── DASHBOARD CONTAINER ── */
   .delivery-container {
     width: min(1280px, 94%);
     margin: 0 auto;
   }
 
+  /* ── TOP BAR: 3-column, email chip does NOT clip ── */
   .delivery-top {
     width: 100%;
-    background: #ffffff;
-    padding: 22px;
+    padding: 18px 22px;
     border-radius: 18px;
     margin-bottom: 24px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+    background: var(--dv-card);
+    border: 1px solid var(--dv-border);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.06);
     display: grid;
-    grid-template-columns: 1fr 260px 160px;
+    grid-template-columns: 1fr auto auto;
     gap: 14px;
     align-items: center;
   }
 
   .delivery-search {
-    width: 100%;
     height: 52px;
-    border: 1px solid #dcdcdc;
-    border-radius: 12px;
-    padding: 0 14px;
-    font-size: 15px;
-    outline: none;
-    background: #fff;
+    margin-bottom: 0;
+    min-width: 0;
   }
 
+  /* ── EMAIL CHIP: full text, never cut off ── */
   .delivery-email-chip {
     height: 52px;
     border-radius: 12px;
-    background: #f1f5f9;
-    color: #334155;
+    background: var(--dv-soft);
+    border: 1px solid var(--dv-border);
+    color: var(--dv-text);
     display: flex;
     align-items: center;
-    padding: 0 14px;
-    font-weight: 800;
+    padding: 0 16px;
+    font-weight: 700;
+    font-size: 14px;
+    white-space: nowrap;          /* keep on one line */
+    max-width: 340px;             /* reasonable cap */
+  }
+
+  .delivery-email-text {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
+  /* ── LOGOUT ── */
   .delivery-logout {
     height: 52px;
+    padding: 0 20px;
     border: none;
     border-radius: 12px;
-    background: #ef4444;
-    color: #fff;
     font-size: 14px;
     font-weight: 800;
     cursor: pointer;
+    background: #ef4444;
+    color: #fff;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 
+  /* ── DELIVERY LIST ── */
   .delivery-list {
     display: flex;
     flex-direction: column;
@@ -1345,11 +1074,11 @@ const deliveryStyles = `
   }
 
   .delivery-card {
-    background: #fff;
+    background: var(--dv-card);
+    border: 1px solid var(--dv-border);
     border-radius: 20px;
     padding: 20px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
-    border: 1px solid #eef2f7;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.06);
   }
 
   .delivery-card-top {
@@ -1363,31 +1092,29 @@ const deliveryStyles = `
     width: 170px;
     height: 120px;
     border-radius: 16px;
-    background: #eef4ff;
-    border: 1px solid #dbeafe;
-    color: #023E8A;
+    background: var(--dv-blue-soft);
+    border: 1px solid var(--dv-border);
+    color: var(--dv-blue);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 46px;
   }
 
-  .delivery-card-body {
-    min-width: 0;
-  }
-
   .delivery-card-title {
+    color: var(--dv-text);
     font-size: 24px;
     font-weight: 800;
-    color: #1f2937;
     margin: 0 0 6px;
   }
 
-  .delivery-card-desc {
-    font-size: 14px;
-    color: #6b7280;
-    margin: 0 0 10px;
-    line-height: 1.6;
+  .delivery-card-chip {
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 700;
+    background: var(--dv-soft);
+    color: var(--dv-text);
   }
 
   .delivery-card-meta {
@@ -1397,15 +1124,6 @@ const deliveryStyles = `
     margin-bottom: 12px;
   }
 
-  .delivery-card-chip {
-    padding: 8px 12px;
-    border-radius: 999px;
-    background: #f1f5f9;
-    color: #334155;
-    font-size: 13px;
-    font-weight: 700;
-  }
-
   .delivery-card-date-row {
     display: grid;
     grid-template-columns: repeat(2, minmax(180px, 1fr));
@@ -1413,25 +1131,31 @@ const deliveryStyles = `
   }
 
   .delivery-info-box {
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--dv-border);
     border-radius: 14px;
     padding: 12px 14px;
-    background: #fafafa;
+    background: var(--dv-box);
   }
 
-  .delivery-info-label {
+  .delivery-info-label,
+  .delivery-price-label {
     font-size: 12px;
     font-weight: 800;
-    color: #94a3b8;
+    color: var(--dv-muted);
     margin-bottom: 4px;
     text-transform: uppercase;
   }
 
-  .delivery-info-value {
-    font-size: 14px;
+  .delivery-info-value,
+  .delivery-price-value {
+    color: var(--dv-text);
     font-weight: 700;
-    color: #1f2937;
     word-break: break-word;
+  }
+
+  .delivery-price-value {
+    font-size: 30px;
+    font-weight: 900;
   }
 
   .delivery-card-right {
@@ -1442,28 +1166,15 @@ const deliveryStyles = `
     align-items: flex-end;
   }
 
-  .delivery-price-label {
-    color: #94a3b8;
-    font-size: 12px;
-    font-weight: 800;
-    text-transform: uppercase;
-  }
-
-  .delivery-price-value {
-    color: #111827;
-    font-size: 30px;
-    font-weight: 900;
-  }
-
   .delivery-status-note {
     min-width: 160px;
     padding: 12px 18px;
     border-radius: 12px;
-    background: #eaf2ff;
-    color: #023E8A;
     font-size: 14px;
     font-weight: 800;
     text-align: center;
+    background: var(--dv-blue-soft);
+    color: var(--dv-blue);
   }
 
   .delivery-actions-panel {
@@ -1472,14 +1183,28 @@ const deliveryStyles = `
     gap: 10px;
   }
 
-  .delivery-small-input {
-    height: 46px;
-    border: 1px solid #dcdcdc;
-    border-radius: 12px;
-    padding: 0 14px;
+  .delivery-action-btn,
+  .delivery-danger-btn {
+    min-height: 46px;
     font-size: 14px;
-    outline: none;
-    background: #fff;
+    padding: 0 16px;
+  }
+
+  .delivery-danger-btn {
+    background: #ef4444;
+    color: #fff;
+  }
+
+  .delivery-empty {
+    width: 100%;
+    border-radius: 16px;
+    padding: 36px 20px;
+    text-align: center;
+    color: var(--dv-muted);
+    font-size: 16px;
+    background: var(--dv-card);
+    border: 1px solid var(--dv-border);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.06);
   }
 
   .delivery-small-input.full {
@@ -1491,39 +1216,21 @@ const deliveryStyles = `
     width: 100%;
     font-size: 14px;
     margin-bottom: 8px;
+    color: var(--dv-text);
   }
 
-  .delivery-action-btn,
-  .delivery-danger-btn {
-    min-height: 46px;
-    border: none;
-    border-radius: 12px;
-    color: #fff;
-    font-size: 14px;
+  .delivery-selected-file {
+    border-radius: 10px;
+    padding: 9px 10px;
+    font-size: 13px;
     font-weight: 800;
-    cursor: pointer;
-    padding: 0 16px;
+    margin-bottom: 10px;
+    word-break: break-word;
+    background: var(--dv-soft);
+    color: var(--dv-text);
   }
 
-  .delivery-action-btn {
-    background: #023E8A;
-  }
-
-  .delivery-danger-btn {
-    background: #ef4444;
-  }
-
-  .delivery-empty {
-    width: 100%;
-    background: #ffffff;
-    border-radius: 16px;
-    padding: 36px 20px;
-    text-align: center;
-    color: #6c757d;
-    font-size: 16px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
-  }
-
+  /* ── MODAL ── */
   .delivery-modal-backdrop {
     position: fixed;
     inset: 0;
@@ -1539,10 +1246,12 @@ const deliveryStyles = `
     width: min(660px, 100%);
     max-height: 92vh;
     overflow-y: auto;
-    background: #fff;
     border-radius: 22px;
     padding: 22px;
     box-shadow: 0 24px 70px rgba(0,0,0,0.28);
+    background: var(--dv-card);
+    border: 1px solid var(--dv-border);
+    color: var(--dv-text);
   }
 
   .delivery-modal-header {
@@ -1554,17 +1263,11 @@ const deliveryStyles = `
   }
 
   .delivery-modal-title {
-    color: #023E8A;
+    text-align: start;
     font-size: 22px;
     font-weight: 900;
     margin: 0 0 4px;
-  }
-
-  .delivery-modal-subtitle {
-    color: #64748b;
-    font-size: 13px;
-    font-weight: 800;
-    margin: 0;
+    color: var(--dv-blue);
   }
 
   .delivery-modal-close {
@@ -1577,12 +1280,12 @@ const deliveryStyles = `
   }
 
   .delivery-modal-current {
-    background: #eaf2ff;
-    color: #023E8A;
     border-radius: 14px;
     padding: 12px 14px;
     font-weight: 900;
     margin-bottom: 14px;
+    background: var(--dv-blue-soft);
+    color: var(--dv-blue);
   }
 
   .delivery-step-list {
@@ -1594,20 +1297,20 @@ const deliveryStyles = `
     display: grid;
     grid-template-columns: 44px 1fr;
     gap: 12px;
-    border: 1px solid #e5e7eb;
+    border: 1px solid var(--dv-border);
     border-radius: 18px;
     padding: 16px;
-    background: #fff;
+    background: var(--dv-card);
   }
 
   .delivery-step-card.active {
-    border-color: #023E8A;
-    background: #f8fbff;
+    border-color: var(--dv-blue);
+    background: var(--dv-box);
   }
 
   .delivery-step-card.done {
-    border-color: #b7eb8f;
-    background: #f6ffed;
+    border-color: #4ade80;
+    background: rgba(74, 222, 128, 0.12);
   }
 
   .delivery-step-card.locked {
@@ -1618,7 +1321,7 @@ const deliveryStyles = `
     width: 38px;
     height: 38px;
     border-radius: 50%;
-    background: #023E8A;
+    background: var(--dv-blue);
     color: #fff;
     display: flex;
     align-items: center;
@@ -1628,27 +1331,15 @@ const deliveryStyles = `
 
   .delivery-step-content h4 {
     margin: 0 0 6px;
-    color: #111827;
     font-size: 17px;
     font-weight: 900;
+    color: var(--dv-text);
   }
 
   .delivery-step-content p {
     margin: 0 0 12px;
-    color: #64748b;
     line-height: 1.5;
     font-size: 14px;
-  }
-
-  .delivery-selected-file {
-    color: #334155;
-    background: #f1f5f9;
-    border-radius: 10px;
-    padding: 9px 10px;
-    font-size: 13px;
-    font-weight: 800;
-    margin-bottom: 10px;
-    word-break: break-word;
   }
 
   .delivery-modal-footer {
@@ -1657,37 +1348,58 @@ const deliveryStyles = `
     margin-top: 16px;
   }
 
-  .delivery-modal-done {
+  .delivery-modal-done,
+  .delivery-modal-failed {
     margin-top: 14px;
+    border-radius: 14px;
+    padding: 14px;
+    font-weight: 900;
+    text-align: center;
+  }
+
+  .delivery-modal-done {
     background: #f6ffed;
     color: #237804;
     border: 1px solid #b7eb8f;
-    border-radius: 14px;
-    padding: 14px;
-    font-weight: 900;
-    text-align: center;
   }
 
   .delivery-modal-failed {
-    margin-top: 14px;
     background: #fff1f0;
     color: #cf1322;
     border: 1px solid #ffa39e;
-    border-radius: 14px;
-    padding: 14px;
-    font-weight: 900;
-    text-align: center;
   }
 
-  @media (max-width: 1100px) {
-    .delivery-top {
-      grid-template-columns: 1fr;
-    }
+  .dark-delivery .delivery-modal-done {
+    background: #102315;
+    color: #8ff0a4;
+    border-color: #285f35;
+  }
 
+  .dark-delivery .delivery-modal-failed {
+    background: #2a0f12;
+    color: #ff9aa2;
+    border-color: #6b252b;
+  }
+
+  /* ── RESPONSIVE ── */
+ @media (max-width: 1100px) {
+    .delivery-top {
+      grid-template-columns: 1fr auto;
+      grid-template-areas:
+        "search logout"
+        "email  email";
+    }
+    .delivery-search   { grid-area: search; }
+    .delivery-email-chip {
+      grid-area: email;
+      max-width: 100%;
+      width: 100%;
+      display: flex;
+    }
+    .delivery-logout   { grid-area: logout; }
     .delivery-card-top {
       grid-template-columns: 160px 1fr;
     }
-
     .delivery-card-right {
       grid-column: 1 / -1;
       align-items: flex-start;
@@ -1696,25 +1408,22 @@ const deliveryStyles = `
   }
 
   @media (max-width: 760px) {
+    .dv-navbar { padding: 0 14px; }
+    .dv-brand span { display: none; }
+    .delivery-top {
+      grid-template-columns: 1fr auto;
+    }
     .delivery-card-top {
       grid-template-columns: 1fr;
     }
-
     .delivery-icon-box {
       width: 100%;
       height: 160px;
     }
-
     .delivery-card-date-row {
       grid-template-columns: 1fr;
     }
-
-    .delivery-price-value {
-      font-size: 24px;
-    }
-
-    .delivery-step-card {
-      grid-template-columns: 1fr;
-    }
+    .delivery-price-value { font-size: 24px; }
+    .delivery-step-card { grid-template-columns: 1fr; }
   }
 `;

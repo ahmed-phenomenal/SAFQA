@@ -189,7 +189,7 @@ export default function ConfirmLogin() {
     <>
       <ToastContainer theme="colored" />
 
-      <div className="register" dir={isArabic ? "rtl" : "ltr"}>
+      <div className="code" dir={isArabic ? "rtl" : "ltr"}>
         <div className="container">
           <h1 style={{ padding: "10px 0" }}>{t("confirmCodeTitle")}</h1>
 

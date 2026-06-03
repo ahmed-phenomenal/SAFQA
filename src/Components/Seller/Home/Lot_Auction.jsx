@@ -496,7 +496,9 @@ export default function Lot_Auction() {
     if (!description.trim()) return t("lotDescriptionRequired");
 
     if (!lotItems.length) {
-      return t("itemsRequired", { defaultValue: "At least one item is required" });
+      return t("itemsRequired", {
+        defaultValue: "At least one item is required",
+      });
     }
 
     for (let index = 0; index < lotItems.length; index += 1) {
@@ -605,34 +607,7 @@ export default function Lot_Auction() {
           images: [item.imageFile].filter(Boolean),
         })),
       };
-      console.log("LOT AUCTION PAYLOAD BEFORE SEND:", {
-  title: payload.title,
-  description: payload.description,
-  categoryId: payload.categoryId,
-  startingPrice: payload.startingPrice,
-  bidIncrement: payload.bidIncrement,
-  startDate: payload.startDate,
-  endDate: payload.endDate,
-  hasMainImage: payload.image instanceof File,
-  mainImageName: payload.image?.name,
-  mainImageType: payload.image?.type,
-  mainImageSize: payload.image?.size,
-  itemsCount: payload.items?.length || 0,
-  items: payload.items?.map((item, index) => ({
-    index,
-    title: item.title,
-    description: item.description,
-    count: item.count,
-    warrantyInfo: item.warrantyInfo,
-    condition: item.condition,
-    categoryId: item.categoryId,
-    hasImage: item.image instanceof File,
-    imageName: item.image?.name,
-    imageType: item.image?.type,
-    imageSize: item.image?.size,
-    imagesCount: item.images?.length || 0,
-  })),
-});
+
       const response = await createAuction(payload);
 
       clearDraft();
@@ -652,12 +627,93 @@ export default function Lot_Auction() {
     <div className="lot-auction" dir={isArabic ? "rtl" : "ltr"}>
       <style>{`
         .lot-auction {
+          --lot-bg: #f5f6fa;
+          --lot-card: #ffffff;
+          --lot-card-soft: #fcfcfc;
+          --lot-input: #ffffff;
+          --lot-text: #1f2937;
+          --lot-muted: #6b7280;
+          --lot-border: #d9d9d9;
+          --lot-border-soft: #e5e7eb;
+          --lot-blue: #023E8A;
+          --lot-blue-soft: #eef6ff;
+          --lot-danger-bg: #fff1f0;
+          --lot-danger-text: #cf1322;
+          --lot-danger-border: #ffa39e;
+          --lot-success-bg: #f6ffed;
+          --lot-success-text: #237804;
+          --lot-success-border: #b7eb8f;
+
           width: 100%;
           min-height: 100vh;
-          background: #f5f6fa;
+          background: var(--lot-bg);
+          color: var(--lot-text);
           padding: 32px 0 60px;
           box-sizing: border-box;
           font-family: Arial, Helvetica, sans-serif;
+        }
+
+        @media (prefers-color-scheme: dark) {
+          .lot-auction {
+            --lot-bg: #000000;
+            --lot-card: #151515;
+            --lot-card-soft: #0d0d0d;
+            --lot-input: #000000;
+            --lot-text: #f5f5f5;
+            --lot-muted: #b7b7b7;
+            --lot-border: #333333;
+            --lot-border-soft: #2f2f2f;
+            --lot-blue: #4da3ff;
+            --lot-blue-soft: #10243f;
+            --lot-danger-bg: #2a0f12;
+            --lot-danger-text: #ff9aa2;
+            --lot-danger-border: #6b252b;
+            --lot-success-bg: #102315;
+            --lot-success-text: #8ff0a4;
+            --lot-success-border: #285f35;
+          }
+        }
+
+        [data-theme="dark"] .lot-auction,
+        body.dark .lot-auction,
+        .dark .lot-auction {
+          --lot-bg: #000000;
+          --lot-card: #151515;
+          --lot-card-soft: #0d0d0d;
+          --lot-input: #000000;
+          --lot-text: #f5f5f5;
+          --lot-muted: #b7b7b7;
+          --lot-border: #333333;
+          --lot-border-soft: #2f2f2f;
+          --lot-blue: #4da3ff;
+          --lot-blue-soft: #10243f;
+          --lot-danger-bg: #2a0f12;
+          --lot-danger-text: #ff9aa2;
+          --lot-danger-border: #6b252b;
+          --lot-success-bg: #102315;
+          --lot-success-text: #8ff0a4;
+          --lot-success-border: #285f35;
+        }
+
+        [data-theme="light"] .lot-auction,
+        body.light .lot-auction,
+        .light .lot-auction {
+          --lot-bg: #f5f6fa;
+          --lot-card: #ffffff;
+          --lot-card-soft: #fcfcfc;
+          --lot-input: #ffffff;
+          --lot-text: #1f2937;
+          --lot-muted: #6b7280;
+          --lot-border: #d9d9d9;
+          --lot-border-soft: #e5e7eb;
+          --lot-blue: #023E8A;
+          --lot-blue-soft: #eef6ff;
+          --lot-danger-bg: #fff1f0;
+          --lot-danger-text: #cf1322;
+          --lot-danger-border: #ffa39e;
+          --lot-success-bg: #f6ffed;
+          --lot-success-text: #237804;
+          --lot-success-border: #b7eb8f;
         }
 
         .lot-auction * { box-sizing: border-box; }
@@ -669,22 +725,23 @@ export default function Lot_Auction() {
 
         .lot-auction .title {
           text-align: center;
-          color: #023E8A;
+          color: var(--lot-blue);
           font-size: 32px;
           font-weight: 700;
           margin: 0 0 24px;
         }
 
         .lot-auction .section {
-          background: #fff;
+          background: var(--lot-card);
           border-radius: 18px;
           padding: 22px;
           box-shadow: 0 8px 24px rgba(0,0,0,0.06);
           margin-bottom: 18px;
+          border: 1px solid var(--lot-border-soft);
         }
 
         .lot-auction .section-title {
-          color: #1f2a37;
+          color: var(--lot-text);
           font-size: 18px;
           font-weight: 700;
           margin: 0 0 14px;
@@ -697,7 +754,7 @@ export default function Lot_Auction() {
           border-radius: 16px;
           display: block;
           margin-bottom: 14px;
-          border: 1px solid #e7e7e7;
+          border: 1px solid var(--lot-border-soft);
         }
 
         .lot-auction .item-image-preview {
@@ -707,7 +764,7 @@ export default function Lot_Auction() {
           border-radius: 14px;
           display: block;
           margin-bottom: 12px;
-          border: 1px solid #e7e7e7;
+          border: 1px solid var(--lot-border-soft);
         }
 
         .lot-auction .image-upload,
@@ -715,30 +772,31 @@ export default function Lot_Auction() {
         .lot-auction .save-btn,
         .lot-auction .back-btn,
         .lot-auction .add-btn,
-        .lot-auction .remove-btn {
+        .lot-auction .remove-btn,
+        .lot-auction .tag {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          border: none;
           cursor: pointer;
           font-weight: 700;
           border-radius: 12px;
           transition: 0.2s ease;
+          font-family: inherit;
         }
 
         .lot-auction .image-upload {
-          background: #fff;
-          color: #6b7280;
-          border: 2px dashed #d1d5db;
+          background: var(--lot-input);
+          color: var(--lot-muted);
+          border: 2px dashed var(--lot-border);
           width: 100%;
           min-height: 120px;
           margin-bottom: 14px;
         }
 
         .lot-auction .item-image-upload {
-          background: #eef6ff;
-          color: #023E8A;
-          border: 1px dashed #9ec5fe;
+          background: var(--lot-blue-soft);
+          color: var(--lot-blue);
+          border: 1px dashed var(--lot-blue);
           padding: 12px 16px;
           margin-bottom: 14px;
         }
@@ -746,13 +804,24 @@ export default function Lot_Auction() {
         .lot-auction .input,
         .lot-auction .textarea {
           width: 100%;
-          border: 1px solid #d9d9d9;
+          border: 1px solid var(--lot-border);
           border-radius: 12px;
           padding: 14px 16px;
           font-size: 15px;
           outline: none;
           margin-bottom: 14px;
-          background: #fff;
+          background: var(--lot-input);
+          color: var(--lot-text);
+        }
+
+        .lot-auction .input:focus,
+        .lot-auction .textarea:focus {
+          border-color: var(--lot-blue);
+        }
+
+        .lot-auction .input::placeholder,
+        .lot-auction .textarea::placeholder {
+          color: var(--lot-muted);
         }
 
         .lot-auction .textarea {
@@ -775,25 +844,39 @@ export default function Lot_Auction() {
 
         .lot-auction .tag {
           padding: 10px 16px;
-          border-radius: 12px;
-          border: 1px solid #dcdcdc;
-          background: #fafafa;
-          cursor: pointer;
-          font-weight: 600;
+          border: 1px solid var(--lot-border);
+          background: var(--lot-card-soft);
+          color: var(--lot-text);
           font-size: 14px;
+          appearance: none;
+        }
+
+        .lot-auction .tag.active {
+          background: #023E8A !important;
+          color: #fff !important;
+          border-color: #023E8A !important;
+        }
+
+        .lot-auction .tag:hover {
+          transform: translateY(-1px);
         }
 
         .lot-auction .info-box {
           margin-top: 20px;
-          color: #023E8A;
+          color: var(--lot-blue);
+          background: var(--lot-blue-soft);
+          border: 1px solid var(--lot-border-soft);
+          border-radius: 12px;
+          padding: 14px;
           font-weight: 600;
           line-height: 1.7;
         }
 
-        .lot-auction .error-note {
-          background: #fff1f0;
-          color: #cf1322;
-          border: 1px solid #ffa39e;
+        .lot-auction .error-note,
+        .lot-auction .file-error {
+          background: var(--lot-danger-bg);
+          color: var(--lot-danger-text);
+          border: 1px solid var(--lot-danger-border);
           border-radius: 12px;
           padding: 12px 14px;
           margin-bottom: 14px;
@@ -801,27 +884,19 @@ export default function Lot_Auction() {
         }
 
         .lot-auction .success-note {
-          background: #f6ffed;
-          color: #237804;
-          border: 1px solid #b7eb8f;
+          background: var(--lot-success-bg);
+          color: var(--lot-success-text);
+          border: 1px solid var(--lot-success-border);
           border-radius: 12px;
           padding: 12px 14px;
           margin-bottom: 14px;
           font-weight: 600;
         }
 
-        .lot-auction .file-error {
-          background: #fff1f0;
-          color: #cf1322;
-          border: 1px solid #ffa39e;
-          border-radius: 12px;
-          padding: 12px 14px;
-          margin-bottom: 14px;
-        }
-
         .lot-auction .save-btn {
-          background: #023E8A;
+          background: var(--lot-blue);
           color: white;
+          border: none;
           width: 100%;
           min-height: 58px;
           font-size: 17px;
@@ -833,31 +908,33 @@ export default function Lot_Auction() {
         }
 
         .lot-auction .back-btn {
-          background: #eef2ff;
-          color: #023E8A;
+          background: var(--lot-blue-soft);
+          color: var(--lot-blue);
+          border: 1px solid var(--lot-border-soft);
           padding: 12px 18px;
         }
 
         .lot-auction .add-btn {
-          background: #023E8A;
+          background: var(--lot-blue);
           color: white;
+          border: none;
           padding: 12px 18px;
           margin-bottom: 18px;
         }
 
         .lot-auction .remove-btn {
-          background: #fff1f0;
-          color: #cf1322;
-          border: 1px solid #ffa39e;
+          background: var(--lot-danger-bg);
+          color: var(--lot-danger-text);
+          border: 1px solid var(--lot-danger-border);
           padding: 10px 14px;
         }
 
         .lot-auction .item-card {
-          border: 1px solid #e5e7eb;
+          border: 1px solid var(--lot-border-soft);
           border-radius: 16px;
           padding: 18px;
           margin-bottom: 16px;
-          background: #fcfcfc;
+          background: var(--lot-card-soft);
         }
 
         .lot-auction .item-card-header {
@@ -871,7 +948,7 @@ export default function Lot_Auction() {
         .lot-auction .item-title {
           font-size: 18px;
           font-weight: 800;
-          color: #023E8A;
+          color: var(--lot-blue);
         }
 
         @media (max-width: 768px) {
@@ -940,7 +1017,9 @@ export default function Lot_Auction() {
                 <option value="">
                   {loadingCategories
                     ? t("loadingCategories")
-                    : t("selectCategory", { defaultValue: "Select main category" })}
+                    : t("selectCategory", {
+                        defaultValue: "Select main category",
+                      })}
                 </option>
                 {categories.map((category) => (
                   <option key={category.id} value={category.id}>
@@ -1000,7 +1079,9 @@ export default function Lot_Auction() {
                   <label className="item-image-upload">
                     {item.imagePreview
                       ? t("changeImage", { defaultValue: "Change image" })
-                      : t("uploadItemImage", { defaultValue: "Upload item image" })}
+                      : t("uploadItemImage", {
+                          defaultValue: "Upload item image",
+                        })}
                     <input
                       type="file"
                       hidden
@@ -1112,19 +1193,23 @@ export default function Lot_Auction() {
               <h3 className="section-title">{t("bidIncrement")}</h3>
 
               <div className="tags">
-                {BID_OPTIONS.map((bid) => (
-                  <span
-                    key={bid}
-                    className="tag"
-                    onClick={() => setSelectedBid(bid)}
-                    style={{
-                      background: selectedBid === bid ? "#023E8A" : "#fafafa",
-                      color: selectedBid === bid ? "#fff" : "#333",
-                    }}
-                  >
-                    {getBidLabel(bid)}
-                  </span>
-                ))}
+                {BID_OPTIONS.map((bid) => {
+                  const active = selectedBid === bid;
+
+                  return (
+                    <button
+                      key={bid}
+                      type="button"
+                      className={`tag ${active ? "active" : ""}`}
+                      onClick={() => {
+                        setSelectedBid(bid);
+                        if (bid !== "Specify") setCustomBid("");
+                      }}
+                    >
+                      {getBidLabel(bid)}
+                    </button>
+                  );
+                })}
               </div>
 
               {selectedBid === "Specify" && (
@@ -1146,20 +1231,23 @@ export default function Lot_Auction() {
               <h3 className="section-title">{t("auctionDuration")}</h3>
 
               <div className="tags">
-                {DURATION_OPTIONS.map((dur) => (
-                  <span
-                    key={dur}
-                    className="tag"
-                    onClick={() => setSelectedDuration(dur)}
-                    style={{
-                      background:
-                        selectedDuration === dur ? "#023E8A" : "#fafafa",
-                      color: selectedDuration === dur ? "#fff" : "#333",
-                    }}
-                  >
-                    {getDurationLabel(dur)}
-                  </span>
-                ))}
+                {DURATION_OPTIONS.map((dur) => {
+                  const active = selectedDuration === dur;
+
+                  return (
+                    <button
+                      key={dur}
+                      type="button"
+                      className={`tag ${active ? "active" : ""}`}
+                      onClick={() => {
+                        setSelectedDuration(dur);
+                        if (dur !== "Specify") setCustomEndDate("");
+                      }}
+                    >
+                      {getDurationLabel(dur)}
+                    </button>
+                  );
+                })}
               </div>
 
               {selectedDuration === "Specify" && (

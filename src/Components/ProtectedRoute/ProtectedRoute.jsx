@@ -9,26 +9,26 @@ export default function ProtectedRoute({ allowedRoles }) {
 
   const normalizeRole = (role) => {
     if (!role) return "";
-
     const cleanRole = String(role).toLowerCase().trim();
-
     if (cleanRole === "administrator") return "admin";
     if (cleanRole === "buyer") return "user";
     if (cleanRole === "customer") return "user";
-
     return cleanRole;
   };
 
+  // Check adminToken first so admin role is always detected correctly
+  const adminToken = getStorageValue("adminToken");
   const token =
+    adminToken ||
     getStorageValue("token") ||
     getStorageValue("userToken") ||
-    getStorageValue("sellerToken") ||
-    getStorageValue("adminToken");
+    getStorageValue("sellerToken");
 
-  const storedRole =
-    getStorageValue("role") ||
-    getStorageValue("accountType") ||
-    getStorageValue("userRole");
+  const storedRole = adminToken
+    ? "admin"
+    : getStorageValue("role") ||
+      getStorageValue("accountType") ||
+      getStorageValue("userRole");
 
   const role = normalizeRole(storedRole);
   const isLoggedIn = Boolean(token);

@@ -477,35 +477,8 @@ export default function Single_Auction() {
           },
         ],
       };
-      console.log("SINGLE AUCTION PAYLOAD BEFORE SEND:", {
-  title: payload.title,
-  description: payload.description,
-  categoryId: payload.categoryId,
-  startingPrice: payload.startingPrice,
-  bidIncrement: payload.bidIncrement,
-  startDate: payload.startDate,
-  endDate: payload.endDate,
-  hasMainImage: payload.image instanceof File,
-  mainImageName: payload.image?.name,
-  mainImageType: payload.image?.type,
-  mainImageSize: payload.image?.size,
-  items: payload.items?.map((item, index) => ({
-    index,
-    title: item.title,
-    description: item.description,
-    count: item.count,
-    warrantyInfo: item.warrantyInfo,
-    condition: item.condition,
-    categoryId: item.categoryId,
-    hasImage: item.image instanceof File,
-    imageName: item.image?.name,
-    imageType: item.image?.type,
-    imageSize: item.image?.size,
-    imagesCount: item.images?.length || 0,
-  })),
-});
+
       const response = await createAuction(payload);
-      
 
       clearDraft();
       setSuccess(response?.message || t("auctionCreatedSuccessfully"));
@@ -627,6 +600,7 @@ export default function Single_Auction() {
           outline: none;
           margin-bottom: 6px;
           background: #fff;
+          color: #111827;
         }
 
         .single-auction-input:focus,
@@ -657,11 +631,25 @@ export default function Single_Auction() {
         .single-auction-tag {
           padding: 10px 16px;
           border-radius: 999px;
-          border: 1px solid #dcdcdc;
-          background: #fafafa;
           cursor: pointer;
           font-weight: 600;
           font-size: 14px;
+          outline: none;
+          appearance: none;
+          transition: 0.18s ease;
+          background: #fafafa;
+          color: #333;
+          border: 1px solid #dcdcdc;
+        }
+
+        .single-auction-tag:hover {
+          transform: translateY(-1px);
+        }
+
+        .single-auction-tag.active {
+          background: #023E8A !important;
+          color: #fff !important;
+          border-color: #023E8A !important;
         }
 
         .single-auction-end-box {
@@ -733,6 +721,53 @@ export default function Single_Auction() {
           font-size: 13px;
           font-weight: 600;
           margin-bottom: 12px;
+        }
+
+        @media (prefers-color-scheme: dark) {
+          .single-auction {
+            background: #000;
+          }
+
+          .single-auction-section {
+            background: #151515;
+          }
+
+          .single-auction-input,
+          .single-auction-textarea {
+            background: #000;
+            color: #fff;
+            border-color: #333;
+          }
+
+          .single-auction-section-title,
+          .single-auction-description-label,
+          .single-auction-title {
+            color: #4da3ff;
+          }
+
+          .single-auction-tag {
+            background: #0d0d0d;
+            color: #f5f5f5;
+            border-color: #333;
+          }
+
+          .single-auction-tag.active {
+            background: #023E8A !important;
+            color: #fff !important;
+            border-color: #023E8A !important;
+          }
+
+          .single-auction-end-box {
+            background: #10243f;
+            border-color: #263b5c;
+            color: #4da3ff;
+          }
+
+          .single-auction-back-btn {
+            background: #151515;
+            color: #f5f5f5;
+            border-color: #333;
+          }
         }
 
         @media (max-width: 768px) {
@@ -835,6 +870,7 @@ export default function Single_Auction() {
               <button
                 className="single-auction-save-btn"
                 onClick={handleSaveContinue}
+                type="button"
               >
                 {t("saveContinue")}
               </button>
@@ -890,23 +926,26 @@ export default function Single_Auction() {
               <h3 className="single-auction-section-title">
                 {t("bidIncrement")}
               </h3>
+
               <div className="single-auction-tags">
-                {BID_OPTIONS.map((bid) => (
-                  <span
-                    key={bid}
-                    className="single-auction-tag"
-                    onClick={() => {
-                      setSelectedBid(bid);
-                      clearFieldError("bidIncrement");
-                    }}
-                    style={{
-                      background: selectedBid === bid ? "#023E8A" : "#fafafa",
-                      color: selectedBid === bid ? "#fff" : "#333",
-                    }}
-                  >
-                    {getBidLabel(bid)}
-                  </span>
-                ))}
+                {BID_OPTIONS.map((bid) => {
+                  const active = selectedBid === bid;
+
+                  return (
+                    <button
+                      key={bid}
+                      type="button"
+                      className={`single-auction-tag ${active ? "active" : ""}`}
+                      onClick={() => {
+                        setSelectedBid(bid);
+                        if (bid !== "Specify") setCustomBid("");
+                        clearFieldError("bidIncrement");
+                      }}
+                    >
+                      {getBidLabel(bid)}
+                    </button>
+                  );
+                })}
               </div>
 
               {selectedBid === "Specify" && (
@@ -928,24 +967,26 @@ export default function Single_Auction() {
               <h3 className="single-auction-section-title">
                 {t("auctionDuration")}
               </h3>
+
               <div className="single-auction-tags">
-                {DURATION_OPTIONS.map((dur) => (
-                  <span
-                    key={dur}
-                    className="single-auction-tag"
-                    onClick={() => {
-                      setSelectedDuration(dur);
-                      clearFieldError("endDate");
-                    }}
-                    style={{
-                      background:
-                        selectedDuration === dur ? "#023E8A" : "#fafafa",
-                      color: selectedDuration === dur ? "#fff" : "#333",
-                    }}
-                  >
-                    {getDurationLabel(dur)}
-                  </span>
-                ))}
+                {DURATION_OPTIONS.map((dur) => {
+                  const active = selectedDuration === dur;
+
+                  return (
+                    <button
+                      key={dur}
+                      type="button"
+                      className={`single-auction-tag ${active ? "active" : ""}`}
+                      onClick={() => {
+                        setSelectedDuration(dur);
+                        if (dur !== "Specify") setCustomEndDate("");
+                        clearFieldError("endDate");
+                      }}
+                    >
+                      {getDurationLabel(dur)}
+                    </button>
+                  );
+                })}
               </div>
 
               {selectedDuration === "Specify" && (
@@ -976,6 +1017,7 @@ export default function Single_Auction() {
                   setStep(1);
                 }}
                 disabled={submitting}
+                type="button"
               >
                 {t("back")}
               </button>
@@ -984,6 +1026,7 @@ export default function Single_Auction() {
                 className="single-auction-save-btn"
                 onClick={handleSubmit}
                 disabled={submitting}
+                type="button"
               >
                 {submitting ? t("creating") : t("createAuction")}
               </button>

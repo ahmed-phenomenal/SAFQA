@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import i18n from "./i18n";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 
@@ -36,13 +36,14 @@ import Saved_Cards from "./Components/Home/Saved_Cards";
 import Account_edit from "./Components/Home/Account_edit";
 import Tracking from "./Components/Home/Tracking";
 import Help_support from "./Components/Home/Help_support";
+import MyReports from "./Components/Home/MyReports";
+import SellerFollow from "./Components/Home/Seller_Follow";
 
 /* Seller */
 import SellerStatistics from "./Components/Seller/SellerStatistics";
 import Seller from "./Components/Seller/Home/Seller";
 import SellerProfile from "./Components/Seller/Home/seller-profile";
 import Seller_plans from "./Components/Seller/Home/Seller_plans";
-import SellerShippingOrders from "./Components/Seller/Home/seller_Shipping_Orders";
 import SellerReviews from "./Components/Seller/Home/seller_reviews";
 import SellerWallet from "./Components/Seller/Home/seller_wallet";
 import SellerTransactions from "./Components/Seller/Home/seller_transactions";
@@ -57,7 +58,8 @@ import Lot_Auction from "./Components/Seller/Home/Lot_Auction";
 import Single_Auction from "./Components/Seller/Home/Single_Auction";
 import Seller_History from "./Components/Seller/Home/Seller_History";
 import Seller_account_edit from "./Components/Seller/Home/seller_account_edit";
-import ViewAuction from "./Components/Seller/Home/ViewAuction";
+import SellerDelivery from "./Components/Seller/Home/SellerDelivery";
+import Seller_View_Auction from "./Components/Seller/Home/seller-view-auction";
 
 /* Admin */
 import Admin from "./Components/Admin/Admin";
@@ -77,39 +79,41 @@ const router = createBrowserRouter([
     path: "/",
     element: <Splash />,
   },
-
   {
     path: "/",
     element: <Layout />,
     children: [
-      /* Public auth pages */
       { path: "login", element: <Signin /> },
       { path: "sign-up", element: <Register /> },
       { path: "confirm_login", element: <ConfirmLogin /> },
       { path: "forget", element: <Forget /> },
       { path: "code", element: <ResetCode /> },
       { path: "reset-password", element: <ResetPassword /> },
-
-      /*
-        ADMIN ROUTES ARE PUBLIC.
-        They are treated like login/register.
-        No ProtectedRoute here.
-      */
-      { path: "admin", element: <Admin /> },
-      { path: "admin_users", element: <Users /> },
-      { path: "admin_sellers", element: <Sellers /> },
-      { path: "admin_announcements", element: <Announcements /> },
-      { path: "admin_reports", element: <Reports /> },
-      { path: "admin_auctions", element: <Auctions /> },
-      { path: "admin_payments", element: <Payments /> },
-      { path: "admin_delivery", element: <Admin_delivery /> },
-      { path: "admin_track_chats", element: <TrackChatsAdmin /> },
-
-      /* Public delivery pages */
       { path: "delivery", element: <Delivery /> },
       { path: "delivery/:accessKey", element: <Delivery /> },
 
-      /* Buyer/User protected routes */
+      {
+        element: <ProtectedRoute allowedRoles={["admin"]} />,
+        children: [
+          { path: "admin", element: <Admin /> },
+          { path: "admin_users", element: <Users /> },
+          { path: "admin_sellers", element: <Sellers /> },
+          { path: "admin_announcements", element: <Announcements /> },
+          { path: "admin_reports", element: <Reports /> },
+          { path: "admin_auctions", element: <Auctions /> },
+          { path: "admin_payments", element: <Payments /> },
+          { path: "admin_delivery", element: <Admin_delivery /> },
+          { path: "admin_track_chats", element: <TrackChatsAdmin /> },
+        ],
+      },
+
+      {
+        element: <ProtectedRoute allowedRoles={["user", "seller"]} />,
+        children: [
+          { path: "help-&-support", element: <Help_support /> },
+        ],
+      },
+
       {
         element: <ProtectedRoute allowedRoles={["user"]} />,
         children: [
@@ -126,7 +130,6 @@ const router = createBrowserRouter([
           { path: "Privacy_Policy", element: <Privacy_Policy /> },
           { path: "How_To_Bid", element: <How_To_Bid /> },
           { path: "auction-details", element: <AuctionDetails /> },
-          { path: "seller-Review", element: <SellerReview /> },
           { path: "tracking", element: <Tracking /> },
           { path: "chat", element: <Chat /> },
           { path: "transactions", element: <Transactions /> },
@@ -135,18 +138,17 @@ const router = createBrowserRouter([
           { path: "saved-cards", element: <Saved_Cards /> },
           { path: "account-edit", element: <Account_edit /> },
           { path: "track-status", element: <Track_Status /> },
-          { path: "help-&-support", element: <Help_support /> },
+          { path: "my-reports", element: <MyReports /> },
+          { path: "seller-review", element: <SellerFollow /> },
         ],
       },
 
-      /* Seller protected routes */
       {
         element: <ProtectedRoute allowedRoles={["seller"]} />,
         children: [
           { path: "seller", element: <Seller /> },
           { path: "seller-profile", element: <SellerProfile /> },
           { path: "seller-plans", element: <Seller_plans /> },
-          { path: "seller-Shipping-Orders", element: <SellerShippingOrders /> },
           { path: "seller-reviews", element: <SellerReviews /> },
           { path: "seller-wallet", element: <SellerWallet /> },
           { path: "seller-transactions", element: <SellerTransactions /> },
@@ -162,13 +164,13 @@ const router = createBrowserRouter([
           { path: "seller-verification", element: <Verification /> },
           { path: "seller-account-edit", element: <Seller_account_edit /> },
           { path: "seller-change-password", element: <ChangePassword /> },
-          { path: "seller-view-auction", element: <ViewAuction /> },
           { path: "seller-statistics", element: <SellerStatistics /> },
+          { path: "seller-delivery", element: <SellerDelivery /> },
+          { path: "seller-view-auction/:auctionId", element: <Seller_View_Auction /> },
         ],
       },
     ],
   },
-
   {
     path: "*",
     element: <Error />,
@@ -177,160 +179,13 @@ const router = createBrowserRouter([
 
 function App() {
   const [bootLoading, setBootLoading] = useState(true);
-  const idleTimerRef = useRef(null);
 
   useEffect(() => {
     const lang = localStorage.getItem("lang") || "en";
-
     i18n.changeLanguage(lang);
     document.documentElement.lang = lang;
     document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
-  }, []);
-
-  useEffect(() => {
-    const AUTH_KEYS = [
-      "token",
-      "userToken",
-      "sellerToken",
-      "adminToken",
-      "refreshToken",
-      "role",
-      "accountType",
-      "userRole",
-      "sellerId",
-      "currentUserEmail",
-      "pendingEmail",
-      "authLoginHintAccountType",
-    ];
-
-    const INACTIVITY_LIMIT_MS = 30 * 60 * 1000;
-
-    const hasAnyAuth = () => {
-      return AUTH_KEYS.some(
-        (key) => localStorage.getItem(key) || sessionStorage.getItem(key)
-      );
-    };
-
-    const clearAuthStorage = () => {
-      AUTH_KEYS.forEach((key) => {
-        localStorage.removeItem(key);
-        sessionStorage.removeItem(key);
-      });
-    };
-
-    const saveLastActivity = () => {
-      localStorage.setItem("lastActivityAt", String(Date.now()));
-    };
-
-    const logoutUser = () => {
-      clearAuthStorage();
-      localStorage.removeItem("lastActivityAt");
-
-      const publicPaths = [
-        "/admin",
-        "/admin_users",
-        "/admin_sellers",
-        "/admin_announcements",
-        "/admin_reports",
-        "/admin_auctions",
-        "/admin_payments",
-        "/admin_delivery",
-        "/admin_track_chats",
-        "/login",
-        "/sign-up",
-        "/forget",
-        "/code",
-        "/reset-password",
-        "/confirm_login",
-        "/delivery",
-      ];
-
-      const isPublicPath = publicPaths.some((path) =>
-        window.location.pathname.startsWith(path)
-      );
-
-      if (!isPublicPath) {
-        window.location.replace("/login");
-      }
-    };
-
-    const startIdleTimer = () => {
-      if (!hasAnyAuth()) return;
-
-      if (idleTimerRef.current) {
-        clearTimeout(idleTimerRef.current);
-      }
-
-      idleTimerRef.current = setTimeout(() => {
-        logoutUser();
-      }, INACTIVITY_LIMIT_MS);
-    };
-
-    const handleUserActivity = () => {
-      if (!hasAnyAuth()) return;
-
-      saveLastActivity();
-      startIdleTimer();
-    };
-
-    const checkInactivityOnOpen = () => {
-      if (!hasAnyAuth()) return;
-
-      const lastActivityAt = Number(localStorage.getItem("lastActivityAt") || 0);
-
-      if (!lastActivityAt) {
-        saveLastActivity();
-        startIdleTimer();
-        return;
-      }
-
-      const now = Date.now();
-      const inactiveFor = now - lastActivityAt;
-
-      if (inactiveFor >= INACTIVITY_LIMIT_MS) {
-        logoutUser();
-        return;
-      }
-
-      startIdleTimer();
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        checkInactivityOnOpen();
-      }
-    };
-
-    checkInactivityOnOpen();
-
-    const events = [
-      "mousemove",
-      "mousedown",
-      "keydown",
-      "scroll",
-      "touchstart",
-      "click",
-    ];
-
-    events.forEach((eventName) => {
-      window.addEventListener(eventName, handleUserActivity);
-    });
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
     setBootLoading(false);
-
-    return () => {
-      events.forEach((eventName) => {
-        window.removeEventListener(eventName, handleUserActivity);
-      });
-
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-
-      if (idleTimerRef.current) {
-        clearTimeout(idleTimerRef.current);
-      }
-    };
   }, []);
 
   if (bootLoading) {

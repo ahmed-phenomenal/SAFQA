@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import icon from "../../assets/2.png";
+import { getDisputeTracking, cancelDispute } from "../../API/dispute";
 
-export default function Tracking() {
+export default function DisputeTracking() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { t, i18n } = useTranslation();
   const isArabic = i18n.language === "ar";
 
@@ -13,10 +15,16 @@ export default function Tracking() {
     return value === key ? fallback : value;
   };
 
-  const TOTAL_SECONDS = 10;
+  const disputeId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return Number(location?.state?.disputeId || params.get("disputeId") || 0);
+  }, [location]);
 
-  const [timeLeft, setTimeLeft] = useState(TOTAL_SECONDS);
+  const [loading, setLoading] = useState(true);
+  const [backendData, setBackendData] = useState(null);
+  const [error, setError] = useState("");
   const [popupType, setPopupType] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
 
   const steps = [
     {
@@ -43,87 +51,106 @@ export default function Tracking() {
 
   useEffect(() => {
     document.title = tr("trackingDocTitle", "Track Status");
+
+    const link = document.querySelector("link[rel~='icon']");
+    if (link) link.href = icon;
   }, [i18n.language]);
 
-  useEffect(() => {
-    const link = document.querySelector("link[rel~='icon']");
+  const loadDisputeTracking = async () => {
+    try {
+      setLoading(true);
+      setError("");
 
-    if (link) {
-      link.href = icon;
-    } else {
-      const newLink = document.createElement("link");
-      newLink.rel = "icon";
-      newLink.href = icon;
-      document.head.appendChild(newLink);
+      if (!disputeId) {
+        throw new Error("Missing dispute ID.");
+      }
+
+      const res = await getDisputeTracking(disputeId);
+      const root = res?.data || res?.Data || res?.result || res;
+
+      setBackendData(root);
+    } catch (err) {
+      setError(
+        err?.response?.data?.message ||
+          err?.response?.data?.Message ||
+          err?.message ||
+          "Failed to load dispute tracking."
+      );
+      setBackendData(null);
+    } finally {
+      setLoading(false);
     }
-  }, []);
-
-  useEffect(() => {
-    if (timeLeft <= 0) return;
-
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          return 0;
-        }
-
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [timeLeft]);
-
-  const formatTime = (seconds) => {
-    const d = Math.floor(seconds / (24 * 60 * 60));
-    const h = Math.floor((seconds % (24 * 60 * 60)) / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-
-    return `${String(d).padStart(2, "0")}${tr("dayShort", "d")} : ${String(
-      h
-    ).padStart(2, "0")}${tr("hourShort", "h")} : ${String(m).padStart(
-      2,
-      "0"
-    )}${tr("minuteShort", "m")} : ${String(s).padStart(2, "0")}${tr(
-      "secondShort",
-      "s"
-    )}`;
   };
 
+  useEffect(() => {
+    loadDisputeTracking();
+  }, [disputeId]);
+
   const trackingData = useMemo(() => {
-    const elapsed = TOTAL_SECONDS - timeLeft;
-    const progressPercent = (elapsed / TOTAL_SECONDS) * 100;
+    const statusText = String(
+      backendData?.status || backendData?.Status || ""
+    ).toLowerCase();
 
     let activeStep = 0;
-    let message = tr("sellerStillNeedsReply", "Seller still needs to reply.");
 
-    if (timeLeft === 0) {
-      activeStep = 3;
-      message = tr("caseResolved", "Case resolved.");
-    } else if (progressPercent < 33.3333) {
-      activeStep = 0;
-      message = tr("sellerStillNeedsReply", "Seller still needs to reply.");
-    } else if (progressPercent < 66.6666) {
-      activeStep = 1;
-      message = tr("negotiationInProgress", "Negotiation is in progress.");
-    } else {
+    if (statusText.includes("negotiation")) activeStep = 1;
+    else if (statusText.includes("admin") || statusText.includes("escalated")) {
       activeStep = 2;
-      message = tr("adminReviewInProgress", "Admin review is in progress.");
+    } else if (
+      statusText.includes("resolved") ||
+      statusText.includes("cancel") ||
+      statusText.includes("closed")
+    ) {
+      activeStep = 3;
     }
+
+    const days = Number(backendData?.days || backendData?.Days || 0);
+    const hours = Number(backendData?.hours || backendData?.Hours || 0);
+    const minutes = Number(backendData?.minutes || backendData?.Minutes || 0);
 
     return {
       activeStep,
-      message,
-      progressPercent: Math.min(progressPercent, 100),
-      countdown: formatTime(timeLeft),
-      isResolved: timeLeft === 0,
+      message:
+        backendData?.status ||
+        backendData?.Status ||
+        tr("trackingWaitingSeller", "Waiting for seller"),
+      progressPercent: Math.min((activeStep / 3) * 100, 100),
+      countdown: `${String(days).padStart(2, "0")}${tr(
+        "dayShort",
+        "d"
+      )} : ${String(hours).padStart(2, "0")}${tr(
+        "hourShort",
+        "h"
+      )} : ${String(minutes).padStart(2, "0")}${tr("minuteShort", "m")}`,
+      isResolved: activeStep === 3,
+      canChat: Boolean(backendData?.canChat ?? backendData?.CanChat),
+      canEscalate: Boolean(
+        backendData?.canEscalate ?? backendData?.CanEscalate
+      ),
+      canCancel: Boolean(backendData?.canCancel ?? backendData?.CanCancel),
     };
-  }, [timeLeft, i18n.language]);
+  }, [backendData, i18n.language]);
 
   const closePopup = () => {
     setPopupType("");
+  };
+
+  const handleConfirmCancel = async () => {
+    try {
+      setActionLoading(true);
+      await cancelDispute(disputeId);
+      setPopupType("success-cancel");
+      await loadDisputeTracking();
+    } catch (err) {
+      alert(
+        err?.response?.data?.message ||
+          err?.response?.data?.Message ||
+          err?.message ||
+          "Failed to cancel dispute."
+      );
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const isCancelPopup =
@@ -140,10 +167,6 @@ export default function Tracking() {
           display: flex;
           justify-content: center;
           align-items: flex-start;
-        }
-
-        .dispute-tracking-page * {
-          box-sizing: border-box;
         }
 
         .dispute-tracking-card {
@@ -175,8 +198,6 @@ export default function Tracking() {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          flex-shrink: 0;
-          padding: 0;
         }
 
         .dispute-tracking-title {
@@ -184,7 +205,6 @@ export default function Tracking() {
           color: #0b3a82;
           font-size: 42px;
           font-weight: 900;
-          letter-spacing: 0.7px;
           text-transform: uppercase;
           font-family: Georgia, "Times New Roman", serif;
         }
@@ -205,10 +225,8 @@ export default function Tracking() {
         .dispute-progress-label {
           font-size: 17px;
           font-weight: 900;
-          line-height: 1.3;
           text-align: center;
           color: #a5acb8;
-          white-space: nowrap;
         }
 
         .dispute-progress-label.active,
@@ -236,7 +254,6 @@ export default function Tracking() {
           left: 38px;
           top: 25px;
           height: 5px;
-          width: 0;
           background: linear-gradient(90deg, #f3c948 0%, #ff9433 45%, #ef4444 85%);
           border-radius: 999px;
           transition: width 0.4s ease;
@@ -253,7 +270,6 @@ export default function Tracking() {
           top: 9px;
           display: grid;
           grid-template-columns: repeat(4, 1fr);
-          align-items: center;
           justify-items: center;
         }
 
@@ -264,12 +280,6 @@ export default function Tracking() {
           border: 4px solid #fff;
           box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18);
           background: #d1d5db;
-          transition: transform 0.3s ease, background 0.3s ease;
-        }
-
-        .dispute-progress-dot.done,
-        .dispute-progress-dot.active {
-          transform: scale(1.05);
         }
 
         .dispute-progress-dot.yellow.done,
@@ -310,11 +320,9 @@ export default function Tracking() {
           color: #020617;
           font-size: 46px;
           font-weight: 900;
-          letter-spacing: 1px;
         }
 
         .dispute-actions {
-          width: 100%;
           max-width: 980px;
           margin: 0 auto;
           display: flex;
@@ -322,22 +330,20 @@ export default function Tracking() {
           gap: 20px;
         }
 
-        .dispute-chat-btn {
-          width: 100%;
+        .dispute-chat-btn,
+        .dispute-escalate-btn,
+        .dispute-cancel-btn {
           border: none;
-          background: #0b4aa2;
-          color: #fff;
-          text-decoration: none;
-          padding: 20px 22px;
+          padding: 20px;
           border-radius: 12px;
           font-size: 18px;
           font-weight: 900;
           cursor: pointer;
-          transition: 0.25s ease;
         }
 
-        .dispute-chat-btn:hover {
-          background: #083b82;
+        .dispute-chat-btn {
+          background: #0b4aa2;
+          color: #fff;
         }
 
         .dispute-bottom-actions {
@@ -346,24 +352,9 @@ export default function Tracking() {
           gap: 22px;
         }
 
-        .dispute-escalate-btn,
-        .dispute-cancel-btn {
-          border: none;
-          padding: 20px 20px;
-          border-radius: 12px;
-          font-size: 18px;
-          font-weight: 900;
-          cursor: pointer;
-          transition: 0.25s ease;
-        }
-
         .dispute-escalate-btn {
           background: #eaf2ff;
           color: #0b4aa2;
-        }
-
-        .dispute-escalate-btn:hover {
-          background: #d8e7ff;
         }
 
         .dispute-cancel-btn {
@@ -371,8 +362,11 @@ export default function Tracking() {
           color: #fff;
         }
 
-        .dispute-cancel-btn:hover {
-          background: #a91515;
+        .dispute-chat-btn:disabled,
+        .dispute-escalate-btn:disabled,
+        .dispute-cancel-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
 
         .dispute-popup-overlay {
@@ -400,14 +394,10 @@ export default function Tracking() {
           position: absolute;
           top: 12px;
           right: 14px;
-          width: 38px;
-          height: 38px;
           border: none;
-          border-radius: 50%;
           background: transparent;
           font-size: 30px;
           cursor: pointer;
-          line-height: 1;
         }
 
         .dispute-popup-title {
@@ -415,7 +405,6 @@ export default function Tracking() {
           font-size: 26px;
           font-weight: 900;
           text-align: center;
-          color: #111827;
         }
 
         .dispute-popup-text {
@@ -432,10 +421,6 @@ export default function Tracking() {
           gap: 14px;
           margin-top: 26px;
           flex-wrap: wrap;
-        }
-
-        .dispute-popup-actions-center {
-          justify-content: center;
         }
 
         .dispute-popup-btn {
@@ -484,94 +469,37 @@ export default function Tracking() {
           background: #0b4aa2;
         }
 
-        @media (max-width: 900px) {
-          .dispute-tracking-card {
-            width: 94%;
-            padding: 36px 28px 34px;
-          }
-
-          .dispute-tracking-title {
-            font-size: 34px;
-          }
-
-          .dispute-progress-label {
-            font-size: 14px;
-          }
-
-          .dispute-status-text {
-            font-size: 21px;
-          }
-
-          .dispute-countdown {
-            font-size: 36px;
-          }
+        .dispute-loading {
+          color: #0b3a82;
+          text-align: center;
+          font-size: 22px;
+          font-weight: 900;
         }
 
         @media (max-width: 640px) {
-          .dispute-tracking-page {
-            padding: 18px 12px 30px;
-            background: #ffffff;
-          }
-
           .dispute-tracking-card {
             width: 100%;
-            min-height: auto;
-            padding: 18px 14px 18px;
-            border-radius: 14px;
-            box-shadow: none;
-            border: 1px solid #eef2f7;
-          }
-
-          .dispute-tracking-header {
-            margin-bottom: 22px;
-            gap: 12px;
-          }
-
-          .dispute-tracking-back {
-            width: 28px;
-            height: 28px;
-            font-size: 18px;
+            padding: 22px 14px;
           }
 
           .dispute-tracking-title {
-            font-size: 20px;
-          }
-
-          .dispute-progress-wrap {
-            margin-bottom: 28px;
+            font-size: 24px;
           }
 
           .dispute-progress-label {
             font-size: 10px;
-            white-space: normal;
-          }
-
-          .dispute-progress-line-base {
-            left: 16px;
-            right: 16px;
-          }
-
-          .dispute-progress-line-fill {
-            left: 16px;
-          }
-
-          .dispute-progress-dot {
-            width: 22px;
-            height: 22px;
-            border-width: 3px;
           }
 
           .dispute-status-text {
-            font-size: 14px;
-            margin-bottom: 10px;
+            font-size: 16px;
           }
 
           .dispute-countdown {
-            font-size: 20px;
+            font-size: 24px;
           }
 
-          .dispute-actions {
-            gap: 12px;
+          .dispute-bottom-actions {
+            gap: 8px;
           }
 
           .dispute-chat-btn,
@@ -579,11 +507,6 @@ export default function Tracking() {
           .dispute-cancel-btn {
             font-size: 13px;
             padding: 12px;
-            border-radius: 8px;
-          }
-
-          .dispute-bottom-actions {
-            gap: 8px;
           }
         }
       `}</style>
@@ -600,7 +523,7 @@ export default function Tracking() {
               className={`fa-solid ${
                 isArabic ? "fa-angle-right" : "fa-angle-left"
               }`}
-            ></i>
+            />
           </button>
 
           <h2 className="dispute-tracking-title">
@@ -608,91 +531,106 @@ export default function Tracking() {
           </h2>
         </div>
 
-        <div className="dispute-progress-wrap">
-          <div className="dispute-progress-labels">
-            {steps.map((step, index) => (
-              <div
-                key={step.key}
-                className={`dispute-progress-label ${
-                  trackingData.activeStep === index ? "active" : ""
-                } ${
-                  trackingData.activeStep > index || trackingData.isResolved
-                    ? "done"
-                    : ""
-                }`}
-              >
-                {step.label}
-              </div>
-            ))}
+        {loading ? (
+          <div className="dispute-loading">
+            {tr("loadingTracking", "Loading tracking...")}
           </div>
-
-          <div className="dispute-progress-line-area">
-            <div className="dispute-progress-line-base"></div>
-
-            <div
-              className={`dispute-progress-line-fill ${
-                trackingData.isResolved ? "resolved" : ""
-              }`}
-              style={{ width: `${trackingData.progressPercent}%` }}
-            ></div>
-
-            <div className="dispute-progress-dots">
-              {steps.map((step, index) => {
-                const isDone = trackingData.activeStep > index;
-                const isActive = trackingData.activeStep === index;
-
-                return (
+        ) : error ? (
+          <div className="dispute-loading" style={{ color: "#dc2626" }}>
+            {error}
+          </div>
+        ) : (
+          <>
+            <div className="dispute-progress-wrap">
+              <div className="dispute-progress-labels">
+                {steps.map((step, index) => (
                   <div
                     key={step.key}
-                    className={`dispute-progress-dot ${step.colorClass} ${
-                      isDone ? "done" : ""
-                    } ${isActive ? "active" : ""} ${
-                      trackingData.isResolved && index === 3 ? "resolved" : ""
+                    className={`dispute-progress-label ${
+                      trackingData.activeStep === index ? "active" : ""
+                    } ${
+                      trackingData.activeStep > index || trackingData.isResolved
+                        ? "done"
+                        : ""
                     }`}
-                    title={step.label}
-                  ></div>
-                );
-              })}
+                  >
+                    {step.label}
+                  </div>
+                ))}
+              </div>
+
+              <div className="dispute-progress-line-area">
+                <div className="dispute-progress-line-base" />
+
+                <div
+                  className={`dispute-progress-line-fill ${
+                    trackingData.isResolved ? "resolved" : ""
+                  }`}
+                  style={{ width: `${trackingData.progressPercent}%` }}
+                />
+
+                <div className="dispute-progress-dots">
+                  {steps.map((step, index) => {
+                    const isDone = trackingData.activeStep > index;
+                    const isActive = trackingData.activeStep === index;
+
+                    return (
+                      <div
+                        key={step.key}
+                        className={`dispute-progress-dot ${step.colorClass} ${
+                          isDone ? "done" : ""
+                        } ${isActive ? "active" : ""} ${
+                          trackingData.isResolved && index === 3 ? "resolved" : ""
+                        }`}
+                        title={step.label}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
 
-        <div className="dispute-status-box">
-          <p className="dispute-status-text">{trackingData.message}</p>
-          <h3 className="dispute-countdown">{trackingData.countdown}</h3>
-        </div>
+            <div className="dispute-status-box">
+              <p className="dispute-status-text">{trackingData.message}</p>
+              <h3 className="dispute-countdown">{trackingData.countdown}</h3>
+            </div>
 
-        <div className="dispute-actions">
-          <button type="button" className="dispute-chat-btn">
-            {tr("chatWithSeller", "Chat with seller")}
-          </button>
+            <div className="dispute-actions">
+              <button
+                type="button"
+                className="dispute-chat-btn"
+                disabled={!trackingData.canChat}
+              >
+                {tr("chatWithSeller", "Chat with seller")}
+              </button>
 
-          <div className="dispute-bottom-actions">
-            <button
-              type="button"
-              className="dispute-escalate-btn"
-              onClick={() => setPopupType("escalate")}
-            >
-              {tr("escalate", "Escalate")}
-            </button>
+              <div className="dispute-bottom-actions">
+                <button
+                  type="button"
+                  className="dispute-escalate-btn"
+                  disabled={!trackingData.canEscalate}
+                  onClick={() => setPopupType("escalate")}
+                >
+                  {tr("escalate", "Escalate")}
+                </button>
 
-            <button
-              type="button"
-              className="dispute-cancel-btn"
-              onClick={() => setPopupType("cancel")}
-            >
-              {tr("cancelDispute", "Cancel dispute")}
-            </button>
-          </div>
-        </div>
+                <button
+                  type="button"
+                  className="dispute-cancel-btn"
+                  disabled={!trackingData.canCancel}
+                  onClick={() => setPopupType("cancel")}
+                >
+                  {tr("cancelDispute", "Cancel dispute")}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {(popupType === "cancel" || popupType === "escalate") && (
         <div className="dispute-popup-overlay" onClick={closePopup}>
-          <div
-            className="dispute-popup-box"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="dispute-popup-box" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               className="dispute-popup-close"
@@ -733,28 +671,23 @@ export default function Tracking() {
                 className={`dispute-popup-btn ${
                   popupType === "cancel" ? "yes-cancel" : "yes-escalate"
                 }`}
-                onClick={() =>
-                  setPopupType(
-                    popupType === "cancel"
-                      ? "success-cancel"
-                      : "success-escalate"
-                  )
+                disabled={actionLoading}
+                onClick={
+                  popupType === "cancel"
+                    ? handleConfirmCancel
+                    : () => setPopupType("success-escalate")
                 }
               >
-                {tr("yes", "Yes")}
+                {actionLoading ? tr("loading", "Loading...") : tr("yes", "Yes")}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {(popupType === "success-cancel" ||
-        popupType === "success-escalate") && (
+      {(popupType === "success-cancel" || popupType === "success-escalate") && (
         <div className="dispute-popup-overlay" onClick={closePopup}>
-          <div
-            className="dispute-popup-box"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="dispute-popup-box" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               className="dispute-popup-close"
@@ -789,7 +722,7 @@ export default function Tracking() {
                   )}
             </p>
 
-            <div className="dispute-popup-actions dispute-popup-actions-center">
+            <div className="dispute-popup-actions">
               <button
                 type="button"
                 className={`dispute-popup-btn ${

@@ -1,16 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { setLanguage } from "../../../utiles/setLanguage";
 import { forgetPasswordSignoutAll } from "../../../API/auth";
-import { clearStoredSession } from "../../../API/authAccess";
+import {
+  clearStoredSession,
+  hasSellerVerifiedAccess,
+} from "../../../API/authAccess";
+import { applyTheme, getSavedTheme, saveTheme } from "../../../utiles/themeManager";
 import icon from "../../../assets/2.png";
 import "../seller.css";
 import { getSellerDisplayProfile } from "../../../API/seller";
 
 const toImageSrc = (value) => {
   const raw = String(value || "").trim();
-
   if (!raw || raw === " ") return "";
   if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
   if (raw.startsWith("data:image/")) return raw;
@@ -19,7 +22,6 @@ const toImageSrc = (value) => {
     /^[A-Za-z0-9+/=\s]+$/.test(raw) && !raw.includes("{") && !raw.includes("}");
 
   if (!looksLikeBase64) return "";
-
   return `data:image/png;base64,${raw.replace(/\s/g, "")}`;
 };
 
@@ -30,17 +32,36 @@ const skeletonPulse = {
 };
 
 const normalizeProfileStatus = (sellerData) => {
-  const raw = String(sellerData?.verificationStatus || "")
-    .trim()
-    .toLowerCase();
+  const raw = String(sellerData?.verificationStatus || "").trim().toLowerCase();
 
-  if (raw === "verified") return "verified";
-  if (raw === "pending") return "pending";
-  if (raw === "rejected") return "rejected";
+  if (
+    raw === "verified" ||
+    raw === "approved" ||
+    raw === "accepted" ||
+    raw === "admin approved" ||
+    raw === "fully verified"
+  ) {
+    return "verified";
+  }
+
+  if (
+    raw === "pending" ||
+    raw === "submitted" ||
+    raw === "under review" ||
+    raw === "processing"
+  ) {
+    return "pending";
+  }
+
+  if (raw === "rejected" || raw === "declined" || raw === "failed") {
+    return "rejected";
+  }
 
   const localSubmitted =
     sessionStorage.getItem("seller_verification_submitted") === "true" ||
-    localStorage.getItem("seller_verification_submitted") === "true";
+    localStorage.getItem("seller_verification_submitted") === "true" ||
+    sessionStorage.getItem("seller_verification_submitted_global") === "true" ||
+    localStorage.getItem("seller_verification_submitted_global") === "true";
 
   return localSubmitted ? "pending" : "";
 };
@@ -89,15 +110,14 @@ const statusLabel = (status, t) => {
 
 export default function SellerProfile() {
   const navigate = useNavigate();
+  const { i18n, t } = useTranslation();
+  const isArabic = i18n.language === "ar";
 
   const [notifications, setNotifications] = useState(true);
   const [accountOpen, setAccountOpen] = useState(false);
-
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmType, setConfirmType] = useState(null);
-
-  const { i18n, t } = useTranslation();
-  const isArabic = i18n.language === "ar";
+  const [verificationPopupOpen, setVerificationPopupOpen] = useState(false);
+  const [theme, setTheme] = useState(() => getSavedTheme());
 
   const [sellerData, setSellerData] = useState({
     name: "",
@@ -114,11 +134,18 @@ export default function SellerProfile() {
     upgradeType: "",
     verificationStatus: "",
   });
+
   const [sellerLoading, setSellerLoading] = useState(true);
+
+  const darkModeActive = theme === "dark";
 
   useEffect(() => {
     document.title = t("sellerProfileDocTitle");
   }, [t]);
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   useEffect(() => {
     const link = document.querySelector("link[rel~='icon']");
@@ -196,6 +223,17 @@ export default function SellerProfile() {
     [sellerData]
   );
 
+  const isSellerVerified = useMemo(() => {
+    return seller.verificationStatus === "verified" || hasSellerVerifiedAccess();
+  }, [seller.verificationStatus]);
+
+  const toggleDarkMode = () => {
+    const nextTheme = darkModeActive ? "light" : "dark";
+    setTheme(nextTheme);
+    saveTheme(nextTheme);
+    applyTheme(nextTheme);
+  };
+
   const renderStars = (rating) => {
     const numericRating = Number(rating || 0);
     const fullStars = Math.round(numericRating);
@@ -230,41 +268,48 @@ export default function SellerProfile() {
     }
   };
 
-  const doDeactivate = async () => {
-    await doLogout();
-  };
-
-  const openConfirm = (type) => {
-    setConfirmType(type);
+  const openConfirm = () => {
     setConfirmOpen(true);
   };
 
   const closeConfirm = () => {
     setConfirmOpen(false);
-    setConfirmType(null);
   };
 
   const onConfirm = async () => {
-    if (confirmType === "logout") {
-      await doLogout();
+    await doLogout();
+  };
+
+  const handleVerifiedNavigation = (path) => {
+    if (isSellerVerified) {
+      navigate(path);
       return;
     }
 
-    if (confirmType === "deactivate") {
-      await doDeactivate();
-    }
+    setVerificationPopupOpen(true);
   };
 
-  const confirmTitle =
-    confirmType === "logout" ? t("logoutTitle") : t("deactivateTitle");
+  const goToVerification = () => {
+    setVerificationPopupOpen(false);
 
-  const confirmText =
-    confirmType === "logout"
-      ? t("logoutConfirmText")
-      : t("deactivateConfirmText");
+    navigate("/seller-verification", {
+      state: {
+        mode: seller.verificationStatus === "pending" ? "review" : "verify",
+      },
+    });
+  };
 
-  const confirmBtnText =
-    confirmType === "logout" ? t("logout") : t("deactivateAccount");
+  const linkButtonStyle = {
+    width: "100%",
+    border: "none",
+    background: "transparent",
+    padding: 0,
+    margin: 0,
+    textAlign: "inherit",
+    cursor: "pointer",
+    color: "inherit",
+    font: "inherit",
+  };
 
   return (
     <>
@@ -274,6 +319,18 @@ export default function SellerProfile() {
             0% { background-position: 100% 50%; }
             100% { background-position: 0 50%; }
           }
+
+          .seller-profile-dark-toggle-wrap {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+          }
+
+          .seller-profile-dark-label {
+            color: #023e8a;
+            font-size: 14px;
+            font-weight: 700;
+          }
         `}
       </style>
 
@@ -282,10 +339,11 @@ export default function SellerProfile() {
           <h1 className="seller-profile-title">{t("profileTitle")}</h1>
 
           <div className="seller-profile-card seller-profile-user-card">
-            <Link
-              to="/seller-account"
+            <button
+              type="button"
+              onClick={() => handleVerifiedNavigation("/seller-account")}
               className="seller-profile-link-card"
-              style={{ flex: 1, textDecoration: "none", color: "inherit" }}
+              style={{ ...linkButtonStyle, flex: 1 }}
             >
               <div className="seller-profile-user-left">
                 {sellerLoading ? (
@@ -360,10 +418,11 @@ export default function SellerProfile() {
                   </>
                 )}
               </div>
-            </Link>
+            </button>
 
-            <Link
-              to="/seller-account-edit"
+            <button
+              type="button"
+              onClick={() => handleVerifiedNavigation("/seller-account-edit")}
               style={{
                 width: 38,
                 height: 38,
@@ -376,11 +435,12 @@ export default function SellerProfile() {
                 color: "#0b3a86",
                 textDecoration: "none",
                 border: "1px solid #e3e8ef",
+                cursor: "pointer",
               }}
               title={t("editProfile")}
             >
               <i className="fa-solid fa-pen"></i>
-            </Link>
+            </button>
           </div>
 
           <div className="seller-profile-card seller-profile-setting-row">
@@ -396,17 +456,27 @@ export default function SellerProfile() {
             </label>
           </div>
 
-          <Link to="/seller-Shipping-Orders" className="seller-profile-link-card">
+          <button
+            type="button"
+            className="seller-profile-link-card"
+            style={linkButtonStyle}
+            onClick={() => handleVerifiedNavigation("/seller-delivery")}
+          >
             <div className="seller-profile-card seller-profile-simple-row">
-              <span>{t("pendingShippingOrders")}</span>
+              <span>{t("deliveryApp", { defaultValue: "Delivery App" })}</span>
             </div>
-          </Link>
+          </button>
 
-          <Link to="/seller-plans" className="seller-profile-link-card">
+          <button
+            type="button"
+            className="seller-profile-link-card"
+            style={linkButtonStyle}
+            onClick={() => handleVerifiedNavigation("/seller-plans")}
+          >
             <div className="seller-profile-card seller-profile-simple-row">
               <span>{t("plans")}</span>
             </div>
-          </Link>
+          </button>
 
           <div className="seller-profile-card seller-profile-stats-grid">
             <div className="seller-profile-stat-box">
@@ -434,9 +504,7 @@ export default function SellerProfile() {
                 </>
               ) : (
                 <>
-                  <div className="seller-profile-stat-stars">
-                    {renderStars(seller.rating)}
-                  </div>
+                  <div className="seller-profile-stat-stars">{renderStars(seller.rating)}</div>
                   <h3>{seller.rating !== "" ? seller.rating : "-"}</h3>
                 </>
               )}
@@ -494,11 +562,16 @@ export default function SellerProfile() {
             </div>
           </div>
 
-          <Link to="/seller-reviews" className="seller-profile-link-card">
+          <button
+            type="button"
+            className="seller-profile-link-card"
+            style={linkButtonStyle}
+            onClick={() => handleVerifiedNavigation("/seller-reviews")}
+          >
             <div className="seller-profile-card seller-profile-simple-row">
               <span>{t("myReviews")}</span>
             </div>
-          </Link>
+          </button>
 
           <div
             className="seller-profile-card seller-profile-setting-row"
@@ -510,63 +583,94 @@ export default function SellerProfile() {
             </span>
           </div>
 
-          <Link to="/seller-wallet" className="seller-profile-link-card">
+          <div className="seller-profile-card seller-profile-setting-row">
+            <span>{t("appearance", { defaultValue: "Appearance" })}</span>
+
+            <div className="seller-profile-dark-toggle-wrap">
+              <span className="seller-profile-dark-label">
+                {darkModeActive
+                  ? t("darkMode", { defaultValue: "Dark Mode" })
+                  : t("lightMode", { defaultValue: "Light Mode" })}
+              </span>
+
+              <label className="seller-profile-switch">
+                <input
+                  type="checkbox"
+                  checked={darkModeActive}
+                  onChange={toggleDarkMode}
+                />
+                <span className="seller-profile-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="seller-profile-link-card"
+            style={linkButtonStyle}
+            onClick={() => handleVerifiedNavigation("/seller-wallet")}
+          >
             <div className="seller-profile-card seller-profile-setting-row">
               <span>{t("wallet")}</span>
             </div>
-          </Link>
+          </button>
 
-          <Link to="/seller-change-password" className="seller-profile-link-card">
+          <button
+            type="button"
+            className="seller-profile-link-card"
+            style={linkButtonStyle}
+            onClick={() => handleVerifiedNavigation("/seller-change-password")}
+          >
             <div className="seller-profile-card seller-profile-setting-row">
               <span>{t("changePassword")}</span>
             </div>
-          </Link>
+          </button>
 
-          <div className="seller-profile-card seller-profile-setting-row">
-            <span>{t("helpSupport")}</span>
-          </div>
+          <button
+            type="button"
+            className="seller-profile-link-card"
+            style={linkButtonStyle}
+            onClick={() => navigate("/help-&-support")}
+          >
+            <div className="seller-profile-card seller-profile-setting-row">
+              <span>{t("helpSupport")}</span>
+            </div>
+          </button>
 
-          <div className="seller-profile-account-section">
-            <div className="seller-profile-card">
+          {/* Account Management — same structure & classes as user profile */}
+          <div className="profile-account-section">
+            <div className="profile-card">
               <div
-                className="seller-profile-collapse-header"
+                className="profile-collapse-header"
                 onClick={() => setAccountOpen(!accountOpen)}
+                role="button"
+                tabIndex={0}
               >
                 <span>{t("accountManagement")}</span>
-                <i
-                  className={`fa-solid fa-chevron-${
-                    accountOpen ? "up" : "down"
-                  } seller-profile-chevron`}
-                ></i>
+                <i className={`fa-solid fa-chevron-${accountOpen ? "up" : "down"}`}></i>
               </div>
             </div>
 
             {accountOpen && (
-              <div className="seller-profile-account-dropdown">
+              <div className="profile-account-dropdown">
                 <div
-                  className="seller-profile-account-link seller-profile-account-link-logout"
-                  style={{ cursor: "pointer" }}
-                  onClick={() => openConfirm("logout")}
+                  className="profile-account-link profile-account-link-logout"
+                  onClick={openConfirm}
+                  role="button"
+                  tabIndex={0}
                 >
                   {t("logout")}
-                </div>
-
-                <div
-                  className="seller-profile-account-link seller-profile-account-link-deactivate"
-                  style={{ cursor: "pointer" }}
-                  onClick={() => openConfirm("deactivate")}
-                >
-                  {t("deactivateAccount")}
                 </div>
               </div>
             )}
           </div>
+
         </div>
       </div>
 
-      {confirmOpen && (
+      {verificationPopupOpen && (
         <div
-          onClick={closeConfirm}
+          onClick={() => setVerificationPopupOpen(false)}
           style={{
             position: "fixed",
             inset: 0,
@@ -581,81 +685,110 @@ export default function SellerProfile() {
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              width: 340,
-              maxWidth: "95vw",
+              width: "100%",
+              maxWidth: 430,
               background: "#fff",
-              borderRadius: 14,
-              boxShadow: "0 20px 50px rgba(0,0,0,0.25)",
-              overflow: "hidden",
+              borderRadius: 18,
+              padding: 24,
+              boxShadow: "0 20px 50px rgba(0,0,0,0.18)",
+              textAlign: "center",
               direction: isArabic ? "rtl" : "ltr",
             }}
           >
-            <div style={{ padding: "14px 16px 8px" }}>
-              <div
-                style={{
-                  color: "#d11a2a",
-                  fontWeight: 800,
-                  fontSize: 16,
-                  marginBottom: 6,
-                  textAlign: "center",
-                }}
-              >
-                {confirmTitle}
-              </div>
+            <h3
+              style={{
+                margin: 0,
+                marginBottom: 12,
+                color: "#023E8A",
+                fontWeight: 800,
+                fontSize: 22,
+              }}
+            >
+              {t("verificationRequired", {
+                defaultValue: "Verification Required",
+              })}
+            </h3>
 
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "#6b7280",
-                  textAlign: "center",
-                  paddingBottom: 10,
-                  borderBottom: "1px solid #eee",
-                }}
-              >
-                {confirmText}
-              </div>
-            </div>
+            <p
+              style={{
+                margin: 0,
+                color: "#5f6c7b",
+                lineHeight: 1.7,
+              }}
+            >
+              {t("youHaveToVerifyToContinue", {
+                defaultValue: "You have to verify to continue.",
+              })}
+            </p>
 
             <div
               style={{
                 display: "flex",
                 gap: 10,
-                padding: 12,
                 justifyContent: "center",
+                marginTop: 22,
+                flexWrap: "wrap",
               }}
             >
               <button
                 type="button"
-                onClick={onConfirm}
+                onClick={goToVerification}
                 style={{
-                  minWidth: 120,
-                  padding: "10px 14px",
-                  borderRadius: 10,
                   border: "none",
-                  background: "#0b3a86",
+                  background: "#023E8A",
                   color: "#fff",
-                  fontWeight: 700,
+                  borderRadius: 10,
+                  padding: "10px 18px",
+                  fontWeight: 800,
                   cursor: "pointer",
+                  minWidth: 120,
                 }}
               >
-                {confirmBtnText}
+                {seller.verificationStatus === "pending"
+                  ? t("review", { defaultValue: "Review" })
+                  : t("verifyNow", { defaultValue: "Verify Now" })}
               </button>
 
               <button
                 type="button"
-                onClick={closeConfirm}
+                onClick={() => setVerificationPopupOpen(false)}
                 style={{
-                  minWidth: 120,
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  border: "1px solid #cbd5e1",
+                  border: "1px solid #d9d9d9",
                   background: "#fff",
-                  color: "#0b3a86",
-                  fontWeight: 700,
+                  color: "#444",
+                  borderRadius: 10,
+                  padding: "10px 18px",
+                  fontWeight: 800,
                   cursor: "pointer",
+                  minWidth: 120,
                 }}
               >
-                {t("cancel")}
+                {t("cancel", { defaultValue: "Cancel" })}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmOpen && (
+        <div className="profile-modal-backdrop" onClick={closeConfirm}>
+          <div
+            className="profile-modal"
+            onClick={(e) => e.stopPropagation()}
+            dir={isArabic ? "rtl" : "ltr"}
+          >
+            <div className="profile-modal-head">
+              <div className="profile-modal-title">{t("logoutTitle", "Log out?")}</div>
+              <div className="profile-modal-text">{t("logoutConfirmText", "Are you sure you want to log out?")}</div>
+            </div>
+
+            <div className="profile-modal-actions">
+              <button type="button" onClick={onConfirm} className="profile-modal-primary">
+                {t("logout", "Logout")}
+              </button>
+
+              <button type="button" onClick={closeConfirm} className="profile-modal-secondary">
+                {t("cancel", "Cancel")}
               </button>
             </div>
           </div>

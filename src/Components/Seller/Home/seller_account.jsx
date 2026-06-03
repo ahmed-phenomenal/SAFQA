@@ -34,9 +34,9 @@ export default function SellerAccount() {
   const isArabic = i18n.language === "ar";
 
   const [favicon] = useState(icon);
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
   const [sellerData, setSellerData] = useState({
     name: "",
     email: "",
@@ -155,7 +155,20 @@ export default function SellerAccount() {
 
   if (error) {
     return (
-      <div className="account" dir={isArabic ? "rtl" : "ltr"}>
+      <div className="seller-account-page" dir={isArabic ? "rtl" : "ltr"}>
+        <style>{`
+          .seller-account-page {
+            min-height: 100vh;
+            background: var(--seller-account-bg, #f5f6fa);
+            padding: 36px 0 70px;
+            font-family: Arial, Helvetica, sans-serif;
+          }
+          [data-theme="dark"] .seller-account-page,
+          body.dark .seller-account-page {
+            --seller-account-bg: #000;
+          }
+        `}</style>
+
         <div className="container">
           <h1>{t("sellerAccountTitle")}</h1>
           <div className="alert alert-danger">{error}</div>
@@ -165,74 +178,158 @@ export default function SellerAccount() {
   }
 
   return (
-    <div className="account" dir={isArabic ? "rtl" : "ltr"}>
-      <style>
-        {`
-          @keyframes sellerAccountSkeletonPulse {
-            0% { background-position: 100% 50%; }
-            100% { background-position: 0 50%; }
+    <div className="seller-account-page" dir={isArabic ? "rtl" : "ltr"}>
+      <style>{`
+        @keyframes sellerAccountSkeletonPulse {
+          0% { background-position: 100% 50%; }
+          100% { background-position: 0 50%; }
+        }
+
+        .seller-account-page {
+          min-height: 100vh;
+          background: var(--seller-account-bg, #f5f6fa);
+          padding: 36px 0 70px;
+          font-family: Arial, Helvetica, sans-serif;
+          color: var(--seller-account-text, #1f2937);
+        }
+
+        .seller-account-page * {
+          box-sizing: border-box;
+        }
+
+        .seller-account-container {
+          width: min(760px, 94%);
+          margin: 0 auto;
+        }
+
+        .seller-account-title {
+          margin: 0 0 24px;
+          text-align: center;
+          color: var(--seller-account-primary, #023E8A);
+          font-size: 34px;
+          font-weight: 900;
+          letter-spacing: 0.5px;
+          text-transform: uppercase;
+        }
+
+        .seller-account-avatar-box {
+          width: 132px;
+          height: 132px;
+          margin: 0 auto 26px;
+          border-radius: 50%;
+          overflow: hidden;
+          background: var(--seller-account-avatar-bg, #eef2f7);
+          border: 4px solid var(--seller-account-avatar-border, #ffffff);
+          box-shadow: 0 10px 26px rgba(0,0,0,0.14);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+
+        .seller-account-avatar-box img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+          border-radius: 50%;
+        }
+
+        .seller-account-card {
+          background: var(--seller-account-card, #ffffff);
+          border: 1px solid var(--seller-account-border, #e5e7eb);
+          border-radius: 22px;
+          padding: 18px 22px;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+        }
+
+        .seller-account-row {
+          min-height: 54px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          color: var(--seller-account-text, #1f2937);
+          font-size: 16px;
+          font-weight: 700;
+          line-height: 1.6;
+          word-break: break-word;
+        }
+
+        .seller-account-row i {
+          width: 26px;
+          min-width: 26px;
+          text-align: center;
+          font-size: 20px;
+        }
+
+        .seller-account-line {
+          height: 1px;
+          background: var(--seller-account-line, #e5e7eb);
+        }
+
+        [data-theme="dark"] .seller-account-page,
+        body.dark .seller-account-page {
+          --seller-account-bg: #000;
+          --seller-account-card: #000;
+          --seller-account-border: #222;
+          --seller-account-line: #222;
+          --seller-account-text: #fff;
+          --seller-account-primary: #4da3ff;
+          --seller-account-avatar-bg: #111;
+          --seller-account-avatar-border: #111;
+        }
+
+        @media (max-width: 600px) {
+          .seller-account-title {
+            font-size: 28px;
           }
-        `}
-      </style>
 
-      <div className="container">
-        <h1>{t("sellerAccountTitle")}</h1>
+          .seller-account-avatar-box {
+            width: 118px;
+            height: 118px;
+          }
 
-        <div className="my-3">
-          <div className="image">
-            {loading ? (
-              <div
-                style={{
-                  width: 120,
-                  height: 120,
-                  borderRadius: "50%",
-                  margin: "0 auto",
-                  ...skeletonPulse,
-                }}
-              />
-            ) : toImageSrc(seller.image) ? (
-              <img
-                src={toImageSrc(seller.image)}
-                alt={t("sellerAvatar")}
-                style={{
-                  width: 120,
-                  height: 120,
-                  borderRadius: "50%",
-                  objectFit: "cover",
-                  display: "block",
-                  margin: "0 auto",
-                }}
-                onError={(e) => {
-                  e.currentTarget.style.display = "none";
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  width: 120,
-                  height: 120,
-                  borderRadius: "50%",
-                  margin: "0 auto",
-                  background: "#eef2f7",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#8a94a6",
-                  fontSize: 36,
-                }}
-              >
-                <i className="fa-regular fa-user"></i>
-              </div>
-            )}
-          </div>
+          .seller-account-card {
+            padding: 14px 16px;
+          }
+
+          .seller-account-row {
+            font-size: 15px;
+          }
+        }
+      `}</style>
+
+      <div className="seller-account-container">
+        <h1 className="seller-account-title">{t("sellerAccountTitle")}</h1>
+
+        <div className="seller-account-avatar-box">
+          {loading ? (
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                ...skeletonPulse,
+              }}
+            />
+          ) : toImageSrc(seller.image) ? (
+            <img src={toImageSrc(seller.image)} alt={t("sellerAvatar")} />
+          ) : (
+            <i
+              className="fa-regular fa-user"
+              style={{
+                color: "#8a94a6",
+                fontSize: 38,
+              }}
+            ></i>
+          )}
         </div>
 
-        <div className="info-box">
+        <div className="seller-account-card">
           {loading ? (
             <>
               {Array.from({ length: 11 }).map((_, index) => (
                 <div key={index}>
-                  <div className="info-row">
+                  <div className="seller-account-row">
                     <div
                       style={{
                         width: "70%",
@@ -242,136 +339,89 @@ export default function SellerAccount() {
                       }}
                     />
                   </div>
-                  {index !== 10 && <div className="gray-line"></div>}
+                  {index !== 10 && <div className="seller-account-line"></div>}
                 </div>
               ))}
             </>
           ) : (
             <>
-              <div className="info-row">
-                <p className="value_seller">
-                  <i
-                    className="fa-regular fa-user"
-                    style={{ color: "#2c7be5", marginInlineEnd: "8px" }}
-                  ></i>
-                  {seller.name || "-"}
-                </p>
+              <div className="seller-account-row">
+                <i className="fa-regular fa-user" style={{ color: "#2c7be5" }}></i>
+                <span>{seller.name || "-"}</span>
               </div>
-              <div className="gray-line"></div>
+              <div className="seller-account-line"></div>
 
-              <div className="info-row">
-                <p className="value_seller">
-                  <i
-                    className="fa-regular fa-envelope"
-                    style={{ color: "#000", marginInlineEnd: "8px" }}
-                  ></i>
-                  {seller.email || "-"}
-                </p>
+              <div className="seller-account-row">
+                <i className="fa-regular fa-envelope" style={{ color: "#2c7be5" }}></i>
+                <span>{seller.email || "-"}</span>
               </div>
-              <div className="gray-line"></div>
+              <div className="seller-account-line"></div>
 
-              <div className="info-row">
-                <p className="value_seller">
-                  <i
-                    className="fa-solid fa-store"
-                    style={{ color: "#2c7be5", marginInlineEnd: "8px" }}
-                  ></i>
-                  {seller.storeName || "-"}
-                </p>
+              <div className="seller-account-row">
+                <i className="fa-solid fa-store" style={{ color: "#2c7be5" }}></i>
+                <span>{seller.storeName || "-"}</span>
               </div>
-              <div className="gray-line"></div>
+              <div className="seller-account-line"></div>
 
-              <div className="info-row">
-                <p className="value_seller">
-                  <i
-                    className="fa-solid fa-phone"
-                    style={{ color: "#000", marginInlineEnd: "8px" }}
-                  ></i>
-                  {seller.phoneNumber || "-"}
-                </p>
+              <div className="seller-account-row">
+                <i className="fa-solid fa-phone" style={{ color: "#2c7be5" }}></i>
+                <span>{seller.phoneNumber || "-"}</span>
               </div>
-              <div className="gray-line"></div>
+              <div className="seller-account-line"></div>
 
-              <div className="info-row">
-                <p className="value_seller">
-                  <i
-                    className="fa-solid fa-location-dot"
-                    style={{ color: "#000", marginInlineEnd: "8px" }}
-                  ></i>
+              <div className="seller-account-row">
+                <i className="fa-solid fa-location-dot" style={{ color: "#2c7be5" }}></i>
+                <span>
                   {seller.city || "-"}
                   {seller.country ? `, ${seller.country}` : ""}
-                </p>
+                </span>
               </div>
-              <div className="gray-line"></div>
+              <div className="seller-account-line"></div>
 
-              <div className="info-row" style={{ alignItems: "flex-start" }}>
-                <p className="value_seller" style={{ margin: 0 }}>
-                  <i
-                    className="fa-solid fa-align-left"
-                    style={{ color: "#000", marginInlineEnd: "8px" }}
-                  ></i>
-                  {seller.description || "-"}
-                </p>
+              <div className="seller-account-row" style={{ alignItems: "flex-start" }}>
+                <i className="fa-solid fa-align-left" style={{ color: "#2c7be5", marginTop: 4 }}></i>
+                <span>{seller.description || "-"}</span>
               </div>
-              <div className="gray-line"></div>
+              <div className="seller-account-line"></div>
 
-              <div className="info-row">
-                <p className="value_seller">
-                  <i
-                    className="fa-solid fa-star"
-                    style={{ color: "#f6c000", marginInlineEnd: "8px" }}
-                  ></i>
-                  {seller.sellerRating !== "" ? seller.sellerRating : "-"}{" "}
-                  {t("rating")}
-                </p>
+              <div className="seller-account-row">
+                <i className="fa-solid fa-star" style={{ color: "#f6c000" }}></i>
+                <span>
+                  {seller.sellerRating !== "" ? seller.sellerRating : "-"} {t("rating")}
+                </span>
               </div>
-              <div className="gray-line"></div>
+              <div className="seller-account-line"></div>
 
-              <div className="info-row">
-                <p className="value_seller">
-                  <i
-                    className="fa-solid fa-gavel"
-                    style={{ color: "#444", marginInlineEnd: "8px" }}
-                  ></i>
-                  {seller.auctionsCount !== "" ? seller.auctionsCount : "-"}{" "}
-                  {t("auctions")}
-                </p>
+              <div className="seller-account-row">
+                <i className="fa-solid fa-gavel" style={{ color: "#2c7be5" }}></i>
+                <span>
+                  {seller.auctionsCount !== "" ? seller.auctionsCount : "-"} {t("auctions")}
+                </span>
               </div>
-              <div className="gray-line"></div>
+              <div className="seller-account-line"></div>
 
-              <div className="info-row">
-                <p className="value_seller">
-                  <i
-                    className="fa-solid fa-users"
-                    style={{ color: "#444", marginInlineEnd: "8px" }}
-                  ></i>
-                  {seller.followers !== "" ? seller.followers : "-"}{" "}
-                  {t("followers")}
-                </p>
+              <div className="seller-account-row">
+                <i className="fa-solid fa-users" style={{ color: "#2c7be5" }}></i>
+                <span>
+                  {seller.followers !== "" ? seller.followers : "-"} {t("followers")}
+                </span>
               </div>
-              <div className="gray-line"></div>
+              <div className="seller-account-line"></div>
 
-              <div className="info-row">
-                <p className="value_seller">
-                  <i
-                    className="fa-solid fa-crown"
-                    style={{ color: "#28a745", marginInlineEnd: "8px" }}
-                  ></i>
+              <div className="seller-account-row">
+                <i className="fa-solid fa-crown" style={{ color: "#28a745" }}></i>
+                <span>
                   {t("upgrade")}: {seller.upgradeType || "-"}
-                </p>
+                </span>
               </div>
+              <div className="seller-account-line"></div>
 
-              <div className="gray-line"></div>
-
-              <div className="info-row">
-                <p className="value_seller">
-                  <i
-                    className="fa-solid fa-shield-halved"
-                    style={{ color: "#17a2b8", marginInlineEnd: "8px" }}
-                  ></i>
+              <div className="seller-account-row">
+                <i className="fa-solid fa-shield-halved" style={{ color: "#17a2b8" }}></i>
+                <span>
                   {t("verificationStatus")}:{" "}
                   {normalizeStatusLabel(seller.verificationStatus)}
-                </p>
+                </span>
               </div>
             </>
           )}

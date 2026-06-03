@@ -160,7 +160,7 @@ export default function ChangePassword() {
   });
 
   return (
-    <div className="register">
+    <div className="code">
       <div className="container">
         <h1 style={{ padding: "10px 0" }}>
           {t("changePassword", "Change Password")}

@@ -1,3 +1,36 @@
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+
+  --main: #023E8A;
+  --main-2: #0d6efd;
+
+  /* LIGHT */
+  --bg: #ffffff;
+  --card: #ffffff;
+  --card-2: #f6f7fb;
+  --text: #000000;
+  --text-soft: #444444;
+  --border: #e5e5e5;
+  --shadow: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] {
+  --main: #4ea1ff;
+  --main-2: #60a5fa;
+
+  /* DARK */
+  --bg: #000000;
+  --card: #111111;
+  --card-2: #181818;
+  --text: #ffffff;
+  --text-soft: #aaaaaa;
+  --border: #222222;
+  --shadow: rgba(0, 0, 0, 0.45);
+}
+
+html,
+body,
+#root {
+  background: var(--bg);
+  color: var(--text);
 }

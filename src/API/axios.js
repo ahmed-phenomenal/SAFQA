@@ -15,16 +15,8 @@ const AUTH_KEYS = [
   "authLoginHintAccountType",
 ];
 
+// Admin paths removed — they are now protected, not public
 const PUBLIC_FRONTEND_PATHS = [
-  "/admin",
-  "/admin_users",
-  "/admin_sellers",
-  "/admin_announcements",
-  "/admin_reports",
-  "/admin_auctions",
-  "/admin_payments",
-  "/admin_delivery",
-  "/admin_track_chats",
   "/login",
   "/sign-up",
   "/forget",
@@ -36,9 +28,7 @@ const PUBLIC_FRONTEND_PATHS = [
 
 const isPublicFrontendPath = () => {
   if (typeof window === "undefined") return false;
-
   const path = window.location.pathname;
-
   return PUBLIC_FRONTEND_PATHS.some((publicPath) => {
     return path === publicPath || path.startsWith(`${publicPath}/`);
   });
@@ -46,20 +36,15 @@ const isPublicFrontendPath = () => {
 
 const readStorage = (key) => {
   if (typeof window === "undefined") return null;
-
   const fromLocal = localStorage.getItem(key);
   if (fromLocal) return fromLocal;
-
   const fromSession = sessionStorage.getItem(key);
   if (fromSession) return fromSession;
-
   return null;
 };
 
 const writeStorage = (key, value) => {
-  if (typeof window === "undefined") return;
   localStorage.setItem(key, value);
-  sessionStorage.setItem(key, value);
 };
 
 const removeFromBothStorages = (key) => {
@@ -78,105 +63,55 @@ export const safeJsonParse = (value, fallback = null) => {
 
 const normalizeTokenString = (value) => {
   let token = String(value || "").trim();
-
   if (!token) return "";
-
   const parsed = safeJsonParse(token, null);
-  if (typeof parsed === "string") {
-    token = parsed.trim();
-  }
-
-  if (token.toLowerCase().startsWith("bearer ")) {
-    token = token.slice(7).trim();
-  }
-
+  if (typeof parsed === "string") token = parsed.trim();
+  if (token.toLowerCase().startsWith("bearer ")) token = token.slice(7).trim();
   if (
     (token.startsWith('"') && token.endsWith('"')) ||
     (token.startsWith("'") && token.endsWith("'"))
   ) {
     token = token.slice(1, -1).trim();
   }
-
-  if (
-    !token ||
-    token === "undefined" ||
-    token === "null" ||
-    token === "[object Object]"
-  ) {
-    return "";
-  }
-
+  if (!token || token === "undefined" || token === "null" || token === "[object Object]") return "";
   return token;
 };
 
 export const extractTokenFromUnknown = (value) => {
   if (!value) return "";
-
   if (typeof value === "object") {
     const nested =
-      value.token ||
-      value.accessToken ||
-      value.access_token ||
-      value.jwt ||
-      value.jwtToken ||
-      value.idToken ||
-      value.sellerToken ||
-      value.userToken ||
-      value.adminToken ||
-      value.data?.token ||
-      value.data?.accessToken ||
-      value.data?.access_token ||
-      value.data?.jwt ||
-      value.data?.jwtToken ||
-      value.data?.sellerToken ||
-      value.data?.userToken ||
-      value.data?.adminToken ||
-      value.result?.token ||
-      value.result?.accessToken ||
-      value.result?.access_token ||
-      value.result?.jwt ||
-      value.result?.jwtToken ||
-      value.result?.sellerToken ||
-      value.result?.userToken ||
-      value.result?.adminToken ||
+      value.token || value.accessToken || value.access_token ||
+      value.jwt || value.jwtToken || value.idToken ||
+      value.sellerToken || value.userToken || value.adminToken ||
+      value.data?.token || value.data?.accessToken || value.data?.access_token ||
+      value.data?.jwt || value.data?.jwtToken ||
+      value.data?.sellerToken || value.data?.userToken || value.data?.adminToken ||
+      value.result?.token || value.result?.accessToken || value.result?.access_token ||
+      value.result?.jwt || value.result?.jwtToken ||
+      value.result?.sellerToken || value.result?.userToken || value.result?.adminToken ||
       "";
-
     return extractTokenFromUnknown(nested);
   }
-
   const raw = normalizeTokenString(value);
   const parsed = safeJsonParse(raw, null);
-
-  if (parsed && typeof parsed === "object") {
-    return extractTokenFromUnknown(parsed);
-  }
-
+  if (parsed && typeof parsed === "object") return extractTokenFromUnknown(parsed);
   return raw;
 };
 
 export const extractRefreshTokenFromUnknown = (value) => {
   if (!value) return "";
-
   if (typeof value === "object") {
     const nested =
-      value.refreshToken ||
-      value.refresh_token ||
-      value.RefreshToken ||
-      value.refresh ||
-      value.Refresh ||
-      value.data?.refreshToken ||
-      value.data?.refresh_token ||
-      value.data?.RefreshToken ||
+      value.refreshToken || value.refresh_token || value.RefreshToken ||
+      value.refresh || value.Refresh ||
+      value.data?.refreshToken || value.data?.refresh_token || value.data?.RefreshToken ||
       value.data?.refresh ||
-      value.result?.refreshToken ||
-      value.result?.refresh_token ||
-      value.result?.RefreshToken ||
-      value.result?.refresh ||
+      value.result?.refreshToken || value.result?.refresh_token ||
+      value.result?.RefreshToken || value.result?.refresh ||
       "";
-
     return extractRefreshTokenFromUnknown(nested);
   }
-
   return normalizeTokenString(value);
 };
 
@@ -185,7 +120,6 @@ export const getStoredToken = (...keys) => {
     const token = extractTokenFromUnknown(readStorage(key));
     if (token) return token;
   }
-
   return "";
 };
 
@@ -207,76 +141,42 @@ export const getDefaultAccessToken = () => {
 
 export const ensureDeviceId = () => {
   let deviceId = readStorage("DeviceId");
-
   if (!deviceId) {
-    deviceId =
-      "web-" +
-      (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`);
-
+    deviceId = "web-" + (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`);
     writeStorage("DeviceId", deviceId);
   }
-
   return deviceId;
 };
 
 export const extractErrorMessage = (data, fallbackMessage = "") => {
   if (!data) return fallbackMessage;
-
-  if (typeof data === "string") {
-    return data.trim() || fallbackMessage;
-  }
-
-  if (typeof data !== "object") {
-    return fallbackMessage;
-  }
-
+  if (typeof data === "string") return data.trim() || fallbackMessage;
+  if (typeof data !== "object") return fallbackMessage;
   const direct =
-    data.message ||
-    data.Message ||
-    data.error ||
-    data.Error ||
-    data.detail ||
-    data.Detail ||
-    data.title ||
-    data.Title ||
-    "";
-
-  if (typeof direct === "string" && direct.trim()) {
-    return direct.trim();
-  }
-
+    data.message || data.Message || data.error || data.Error ||
+    data.detail || data.Detail || data.title || data.Title || "";
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
   if (Array.isArray(data.errors)) {
-    const first = data.errors.find(
-      (item) => typeof item === "string" && item.trim()
-    );
+    const first = data.errors.find((item) => typeof item === "string" && item.trim());
     if (first) return first.trim();
   }
-
   if (data.errors && typeof data.errors === "object") {
     for (const value of Object.values(data.errors)) {
       if (Array.isArray(value)) {
-        const first = value.find(
-          (item) => typeof item === "string" && item.trim()
-        );
+        const first = value.find((item) => typeof item === "string" && item.trim());
         if (first) return first.trim();
       }
-
-      if (typeof value === "string" && value.trim()) {
-        return value.trim();
-      }
+      if (typeof value === "string" && value.trim()) return value.trim();
     }
   }
-
   if (data.data && typeof data.data === "object") {
     const nested = extractErrorMessage(data.data, "");
     if (nested) return nested;
   }
-
   if (data.result && typeof data.result === "object") {
     const nested = extractErrorMessage(data.result, "");
     if (nested) return nested;
   }
-
   return fallbackMessage;
 };
 
@@ -286,25 +186,11 @@ export const clearAuthTokensOnly = () => {
 
 export const clearAuthAndRedirectToLogin = () => {
   clearAuthTokensOnly();
-
   if (typeof window === "undefined") return;
-
-  /*
-    Important:
-    Admin pages are PUBLIC in your App.jsx.
-    So axios must NOT force redirect to /login when admin APIs return 401.
-  */
-  if (isPublicFrontendPath()) {
-    return;
-  }
-
-  const currentPath =
-    window.location.pathname + window.location.search + window.location.hash;
-
+  if (isPublicFrontendPath()) return;
+  const currentPath = window.location.pathname + window.location.search + window.location.hash;
   if (!window.location.pathname.includes("/login")) {
-    window.location.replace(
-      `/login?redirect=${encodeURIComponent(currentPath)}`
-    );
+    window.location.replace(`/login?redirect=${encodeURIComponent(currentPath)}`);
   }
 };
 
@@ -330,84 +216,40 @@ const normalizeAccountType = (value) => {
 const getCurrentRoleTokenKey = () => {
   const role = normalizeRole(readStorage("role"));
   const accountType = normalizeAccountType(readStorage("accountType"));
-
-  if (
-    role === "seller" ||
-    accountType === "seller" ||
-    readStorage("sellerToken")
-  ) {
-    return "sellerToken";
-  }
-
-  if (role === "admin" || readStorage("adminToken")) {
-    return "adminToken";
-  }
-
-  if (role === "user" || readStorage("userToken")) {
-    return "userToken";
-  }
-
+  if (role === "seller" || accountType === "seller" || readStorage("sellerToken")) return "sellerToken";
+  if (role === "admin" || readStorage("adminToken")) return "adminToken";
+  if (role === "user" || readStorage("userToken")) return "userToken";
   return "token";
 };
 
 export const persistAuthTokensFromResponse = (data, options = {}) => {
   const accessToken = extractTokenFromUnknown(data);
   const refreshToken = extractRefreshTokenFromUnknown(data);
-
   const role = normalizeRole(options.role || readStorage("role"));
-  const accountType = normalizeAccountType(
-    options.accountType || readStorage("accountType")
-  );
-
+  const accountType = normalizeAccountType(options.accountType || readStorage("accountType"));
   let tokenKey = options.tokenKey || "";
-
   if (!tokenKey) {
-    if (role === "seller" || accountType === "seller") {
-      tokenKey = "sellerToken";
-    } else if (role === "admin") {
-      tokenKey = "adminToken";
-    } else if (role === "user" || accountType === "buyer") {
-      tokenKey = "userToken";
-    } else {
-      tokenKey = getCurrentRoleTokenKey();
-    }
+    if (role === "seller" || accountType === "seller") tokenKey = "sellerToken";
+    else if (role === "admin") tokenKey = "adminToken";
+    else if (role === "user" || accountType === "buyer") tokenKey = "userToken";
+    else tokenKey = getCurrentRoleTokenKey();
   }
-
   if (accessToken) {
     writeStorage("token", accessToken);
-
-    if (tokenKey && tokenKey !== "token") {
-      writeStorage(tokenKey, accessToken);
-    }
+    if (tokenKey && tokenKey !== "token") writeStorage(tokenKey, accessToken);
   }
-
-  if (refreshToken) {
-    writeStorage("refreshToken", refreshToken);
-  }
-
-  if (role) {
-    writeStorage("role", role);
-  }
-
-  if (accountType) {
-    writeStorage("accountType", accountType);
-  }
-
-  return {
-    accessToken,
-    refreshToken,
-    tokenKey,
-  };
+  if (refreshToken) writeStorage("refreshToken", refreshToken);
+  if (role) writeStorage("role", role);
+  if (accountType) writeStorage("accountType", accountType);
+  return { accessToken, refreshToken, tokenKey };
 };
 
 export const isRefreshTokenRoute = (url = "") => {
-  const lower = String(url || "").toLowerCase();
-  return lower.includes("/auth/refresh-token");
+  return String(url || "").toLowerCase().includes("/auth/refresh-token");
 };
 
 export const isPublicAuthRoute = (url = "") => {
   const lower = String(url || "").toLowerCase();
-
   return (
     lower.includes("/auth/register") ||
     lower.includes("/auth/login") ||
@@ -428,26 +270,16 @@ export const isPublicAuthRoute = (url = "") => {
 
 export const getAccessTokenForRoute = (url = "") => {
   const lower = String(url || "").toLowerCase();
-
-  if (lower.includes("/seller/createseller")) {
-    return getCreateSellerAccessToken();
-  }
-
+  if (lower.includes("/seller/createseller")) return getCreateSellerAccessToken();
   const isSellerScopedRoute =
-    lower.includes("/seller/") ||
-    lower.includes("/wallet/") ||
-    lower.includes("/card/") ||
-    lower.includes("/notifications/") ||
-    lower.includes("/auction/") ||
-    lower.includes("/item/") ||
-    lower.includes("/transaction/") ||
-    lower.includes("/bid/") ||
-    lower.includes("/totalbid/");
-
-  if (isSellerScopedRoute) {
-    return getSellerScopedAccessToken();
-  }
-
+    lower.includes("/seller/") || lower.includes("/wallet/") ||
+    lower.includes("/card/") || lower.includes("/notifications/") ||
+    lower.includes("/auction/") || lower.includes("/item/") ||
+    lower.includes("/transaction/") || lower.includes("/bid/") ||
+    lower.includes("/totalbid/") || lower.includes("/dispute/") ||
+    lower.includes("/chat/") || lower.includes("/order/") ||
+    lower.includes("/review/") || lower.includes("/tracking/");
+  if (isSellerScopedRoute) return getSellerScopedAccessToken();
   return getDefaultAccessToken();
 };
 
@@ -468,47 +300,29 @@ export const refreshAccessToken = async () => {
     if (!refreshToken) {
       clearAuthTokensOnly();
       throw {
-        response: {
-          status: 401,
-          data: {
-            message: "Session expired. Please login again.",
-          },
-        },
+        response: { status: 401, data: { message: "Session expired. Please login again." } },
       };
     }
 
     const attempts = [
       { data: undefined, headers: {} },
-      {
-        data: { refreshToken },
-        headers: { "Content-Type": "application/json" },
-      },
-      {
-        data: JSON.stringify(refreshToken),
-        headers: { "Content-Type": "application/json" },
-      },
-      {
-        data: refreshToken,
-        headers: { "Content-Type": "text/plain" },
-      },
+      { data: { refreshToken }, headers: { "Content-Type": "application/json" } },
+      { data: JSON.stringify(refreshToken), headers: { "Content-Type": "application/json" } },
+      { data: refreshToken, headers: { "Content-Type": "text/plain" } },
     ];
 
     let lastError = null;
 
     for (const attempt of attempts) {
       try {
-        const res = await refreshClient.post(
-          "/Auth/refresh-token",
-          attempt.data,
-          {
-            headers: {
-              ...(attempt.headers || {}),
-              "x-api-key": "abc123xyhgfhjgkiho3544351z",
-              DeviceId: deviceId,
-              Accept: "application/json",
-            },
-          }
-        );
+        const res = await refreshClient.post("/Auth/refresh-token", attempt.data, {
+          headers: {
+            ...(attempt.headers || {}),
+            "x-api-key": "abc123xyhgfhjgkiho3544351z",
+            DeviceId: deviceId,
+            Accept: "application/json",
+          },
+        });
 
         const saved = persistAuthTokensFromResponse(res.data, {
           tokenKey: getCurrentRoleTokenKey(),
@@ -517,9 +331,7 @@ export const refreshAccessToken = async () => {
         });
 
         if (!saved.accessToken) {
-          throw new Error(
-            "Refresh token succeeded but access token was not returned."
-          );
+          throw new Error("Refresh token succeeded but access token was not returned.");
         }
 
         return saved.accessToken;
@@ -536,10 +348,8 @@ export const refreshAccessToken = async () => {
         ...(lastError?.response || {}),
         status: Number(lastError?.response?.status || 401),
         data: {
-          ...(typeof lastError?.response?.data === "object" &&
-          lastError?.response?.data
-            ? lastError.response.data
-            : {}),
+          ...(typeof lastError?.response?.data === "object" && lastError?.response?.data
+            ? lastError.response.data : {}),
           message: extractErrorMessage(
             lastError?.response?.data,
             lastError?.message || "Session expired. Please login again."
@@ -565,9 +375,7 @@ api.interceptors.request.use((config) => {
   const url = String(config.url || "").toLowerCase();
   const token = getAccessTokenForRoute(url);
   const deviceId = ensureDeviceId();
-
-  const isFormData =
-    typeof FormData !== "undefined" && config.data instanceof FormData;
+  const isFormData = typeof FormData !== "undefined" && config.data instanceof FormData;
 
   config.headers = {
     ...(config.headers || {}),
@@ -576,11 +384,8 @@ api.interceptors.request.use((config) => {
     Accept: "application/json",
   };
 
-  if (!isFormData) {
-    config.headers["Content-Type"] = "application/json";
-  } else {
-    delete config.headers["Content-Type"];
-  }
+  if (!isFormData) config.headers["Content-Type"] = "application/json";
+  else delete config.headers["Content-Type"];
 
   if (!isPublicAuthRoute(url) && token && !config.headers.Authorization) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -595,12 +400,6 @@ api.interceptors.response.use(
     const originalRequest = error?.config || {};
     const status = Number(error?.response?.status || 0);
     const requestUrl = String(originalRequest.url || "").toLowerCase();
-
-    /*
-      Important:
-      If we are on admin public pages, never redirect to login because of API 401.
-      This lets /admin behave like /login and /sign-up: public frontend pages.
-    */
     const shouldSkipLoginRedirect = isPublicFrontendPath();
 
     if (
@@ -612,15 +411,12 @@ api.interceptors.response.use(
       !!getRefreshToken()
     ) {
       originalRequest._retry = true;
-
       try {
         const newAccessToken = await refreshAccessToken();
-
         originalRequest.headers = {
           ...(originalRequest.headers || {}),
           Authorization: `Bearer ${newAccessToken}`,
         };
-
         return api(originalRequest);
       } catch (refreshError) {
         clearAuthAndRedirectToLogin();
@@ -628,11 +424,7 @@ api.interceptors.response.use(
       }
     }
 
-    if (
-      status === 401 &&
-      !shouldSkipLoginRedirect &&
-      !isPublicAuthRoute(requestUrl)
-    ) {
+    if (status === 401 && !shouldSkipLoginRedirect && !isPublicAuthRoute(requestUrl)) {
       clearAuthAndRedirectToLogin();
     }
 
@@ -641,12 +433,10 @@ api.interceptors.response.use(
         error.response.data,
         error.message || `Request failed with status ${error.response.status}`
       );
-
       error.response.data = {
         ...(typeof error.response.data === "object" ? error.response.data : {}),
         message: normalizedMessage,
       };
-
       return Promise.reject(error);
     }
 
@@ -654,10 +444,7 @@ api.interceptors.response.use(
       ...error,
       response: {
         status: 0,
-        data: {
-          message:
-            error?.message || "Network error. Please check your connection.",
-        },
+        data: { message: error?.message || "Network error. Please check your connection." },
       },
     });
   }

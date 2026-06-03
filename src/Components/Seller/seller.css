@@ -1,3 +1,20 @@
+:root,
+[data-theme="light"],
+body.light {
+  --seller-bg: #f5f8fc;
+  --seller-page: #f3f3f3;
+  --seller-card: #ffffff;
+  --seller-card-soft: #f7f7f7;
+  --seller-input: #ffffff;
+  --seller-text: #111827;
+  --seller-text-soft: #5f6c7b;
+  --seller-muted: #6b7280;
+  --seller-border: #e5edf7;
+  --seller-main: #023e8a;
+  --seller-main-soft: #e8f1ff;
+  --seller-shadow: rgba(15, 23, 42, 0.08);
+    color-scheme: light;
+}
 /*Seller Statistics*/
 .seller-statistics * {
   box-sizing: border-box;
@@ -2000,99 +2017,44 @@ font-size:22px;
   }
 }
 /*Notifications*/
-.seller-notification-card {
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 18px 16px;
-  border-radius: 14px;
-  background: #ffffff;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
-  margin-bottom: 14px;
+
+.notification-card {
+  width: 100%;
+  overflow: hidden;
 }
 
-.seller-notification-time {
-  position: absolute;
-  top: 12px;
-  right: 14px;
-  font-size: 11px;
-  color: #777;
+.notification-content {
+  min-width: 0;
+  overflow: hidden;
 }
 
-.seller-notification-icon {
-  width: 34px;
-  height: 34px;
-  min-width: 34px;
+.notification-content h4,
+.notification-content p {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.notification-time {
+  white-space: nowrap;
+}
+
+.notification-icon {
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
   border-radius: 50%;
+  background: rgba(2, 62, 138, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: 4px;
 }
 
-.seller-notification-icon i {
-  font-size: 16px;
-}
-
-.seller-notification-icon-report {
-  background: #eef3fb;
-  color: #e53935;
-}
-
-.seller-notification-icon-order {
-  background: #eef3fb;
-  color: #023e8a;
-}
-
-.seller-notification-icon-default {
-  background: #eef3fb;
-  color: #023e8a;
-}
-
-.seller-notification-content {
-  flex: 1;
-  padding-right: 90px;
-}
-
-.seller-notification-content h4 {
-  margin: 0 0 6px;
-  font-size: 14px;
-  font-weight: 700;
-  color: #202020;
-}
-
-.seller-notification-content p {
-  margin: 0;
-  font-size: 12px;
-  color: #8a8a8a;
-  line-height: 1.5;
-  max-width: 320px;
-}
-
-.seller-notification-chat-btn {
-  margin-top: 10px;
-  border: none;
-  background: #0a4aa8;
-  color: #fff;
-  border-radius: 8px;
-  padding: 8px 14px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: 0.2s ease;
-}
-
-.seller-notification-chat-btn:hover {
-  background: #083a84;
-}
-.seller-report-card {
-  position: relative;
+.notification-icon i {
+  font-size: 20px;
 }
 
 .seller-report-icon {
-  background: #eef3fb;
-  border-radius: 50%;
+  background: rgba(229, 57, 53, 0.12);
 }
 
 .seller-report-chat-btn {
@@ -2110,6 +2072,13 @@ font-size:22px;
 
 .seller-report-chat-btn:hover {
   background: #083a84;
+}
+
+@media (max-width: 768px) {
+  .notification-card {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
 }
 /*Lot Auction*/
 .lot-auction {
@@ -2515,5 +2484,539 @@ font-size:22px;
     flex-wrap: wrap;
     gap: 18px;
   }
+}
+/* ================= DARK / LIGHT MODE FIX ================= */
+
+[data-theme="dark"],
+body.dark {
+  --seller-bg: #000000;
+  --seller-page: #000000;
+  --seller-card: #111111;
+  --seller-card-soft: #161616;
+  --seller-input: #111111;
+  --seller-text: #ffffff;
+  --seller-text-soft: #c7c7c7;
+  --seller-muted: #9ca3af;
+  --seller-border: #2a2a2a;
+  --seller-main: #4da3ff;
+  --seller-main-soft: #102033;
+  --seller-shadow: rgba(255, 255, 255, 0.04);
+}
+
+/* Main pages */
+.seller .seller-page,
+.seller-profile,
+.seller-plans,
+.seller-statistics,
+.verification,
+.lot-auction,
+.single-auction {
+  background: var(--seller-bg) !important;
+  color: var(--seller-text) !important;
+}
+
+/* Cards / sections */
+.seller-confirm-modal,
+.seller-profile .seller-profile-card,
+.seller-profile .seller-profile-account-dropdown,
+.seller-profile .seller-profile-stat-box,
+.seller-profile .seller-profile-order-card,
+.seller-profile .seller-profile-review-card,
+.seller-profile .seller-profile-review-rating-box,
+.seller-plans .seller-plan-card,
+.seller-statistics .card,
+.seller-statistics .stat-card,
+.seller-statistics .legend-item,
+.seller-statistics .recommend-list li,
+.verification__card,
+.verification__note,
+.seller-notification-card,
+.lot-auction .section,
+.lot-auction .item-card,
+.single-auction .single-auction-section {
+  background: var(--seller-card) !important;
+  color: var(--seller-text) !important;
+  border-color: var(--seller-border) !important;
+  box-shadow: 0 8px 24px var(--seller-shadow) !important;
+}
+
+/* Soft cards */
+.seller-shipping-order-full-card,
+.seller-shipping-info-box,
+.seller-report-icon,
+.seller-notification-icon-report,
+.seller-notification-icon-order,
+.seller-notification-icon-default,
+.seller-profile .seller-profile-review-user-icon {
+  background: var(--seller-card-soft) !important;
+  border-color: var(--seller-border) !important;
+}
+
+/* Text colors */
+.seller .seller-logo,
+.seller .seller-logo span,
+.seller .seller-user-text h3,
+.seller-profile .seller-profile-title,
+.seller-profile .seller-profile-setting-row,
+.seller-profile .seller-profile-simple-row,
+.seller-profile .seller-profile-collapse-header,
+.seller-profile .seller-profile-stat-box h3,
+.seller-profile .seller-profile-order-info h4,
+.seller-profile .seller-profile-order-info p span,
+.seller-profile .seller-profile-review-rating-box,
+.seller-review-extra span,
+.seller-plans .seller-plans-title,
+.seller-plans .seller-plan-card h3,
+.seller-plans .seller-plan-card h2,
+.seller-statistics .page-title,
+.seller-statistics .page-title-icon,
+.seller-statistics th,
+.seller-statistics .stat-icon i,
+.verification__title,
+.verification__label,
+.verification__file-name,
+.lot-auction .title,
+.lot-auction .item-title,
+.lot-auction .info-box,
+.single-auction .single-auction-title,
+.single-auction .single-auction-end-box {
+  color: var(--seller-main) !important;
+}
+
+.seller-confirm-modal p,
+.seller-profile .seller-profile-user-info h3,
+.seller-profile .seller-profile-review-left h4,
+.seller-profile .seller-profile-review-text,
+.seller-profile .seller-profile-order-info p,
+.seller-profile .seller-profile-user-info p,
+.seller-plans .seller-plan-features p,
+.seller-statistics td,
+.seller-statistics .card-header h4,
+.seller-statistics .stat-card h3,
+.seller-statistics .recommend-list li,
+.verification__subtitle,
+.verification__note,
+.lot-auction .section-title,
+.single-auction .single-auction-section-title,
+.single-auction .single-auction-description-label,
+.single-auction .single-auction-condition-title,
+.single-auction .single-auction-condition label {
+  color: var(--seller-text) !important;
+}
+
+.seller .seller-user-text p,
+.seller-profile .seller-profile-review-date,
+.seller-review-extra,
+.seller-plans .seller-plans-subtitle,
+.seller-statistics .hint-text,
+.seller-statistics .stat-card p,
+.verification__counter,
+.lot-auction .image-upload,
+.single-auction .single-auction-image-upload {
+  color: var(--seller-text-soft) !important;
+}
+
+/* Inputs */
+.verification__input,
+.verification__textarea,
+.verification__upload-box,
+.verification__upload-button,
+.lot-auction .input,
+.lot-auction .textarea,
+.lot-auction .image-upload,
+.lot-auction .item-image-upload,
+.lot-auction .tag,
+.single-auction .single-auction-input,
+.single-auction .single-auction-textarea,
+.single-auction .single-auction-image-upload,
+.single-auction .single-auction-tag {
+  background: var(--seller-input) !important;
+  color: var(--seller-text) !important;
+  border-color: var(--seller-border) !important;
+}
+
+.verification__input::placeholder,
+.verification__textarea::placeholder,
+.lot-auction .input::placeholder,
+.lot-auction .textarea::placeholder,
+.single-auction .single-auction-input::placeholder,
+.single-auction .single-auction-textarea::placeholder {
+  color: var(--seller-muted) !important;
+}
+
+.verification__input:focus,
+.verification__textarea:focus,
+.lot-auction .input:focus,
+.lot-auction .textarea:focus,
+.single-auction .single-auction-input:focus,
+.single-auction .single-auction-textarea:focus {
+  border-color: var(--seller-main) !important;
+  box-shadow: 0 0 0 3px rgba(77, 163, 255, 0.18) !important;
+}
+
+/* Tables */
+.seller-statistics thead {
+  background: var(--seller-card-soft) !important;
+}
+
+.seller-statistics th,
+.seller-statistics td {
+  border-bottom-color: var(--seller-border) !important;
+}
+
+.seller-statistics tbody tr:hover {
+  background: var(--seller-card-soft) !important;
+}
+
+/* Buttons / tags */
+.seller-statistics .filter-btn,
+.seller-statistics .toggle-btn,
+.seller-profile .seller-profile-btn-light,
+.verification__button--secondary,
+.lot-auction .back-btn,
+.lot-auction .add-btn,
+.single-auction .single-auction-tag,
+.lot-auction .tag {
+  background: var(--seller-main-soft) !important;
+  color: var(--seller-main) !important;
+  border-color: var(--seller-border) !important;
+}
+
+.seller-confirm-ok,
+.seller-profile .seller-profile-btn-main,
+.seller-plans .seller-plan-btn,
+.verification__button--primary,
+.lot-auction .save-btn,
+.single-auction .single-auction-save-btn,
+.seller-notification-chat-btn,
+.seller-report-chat-btn {
+  background: var(--seller-main) !important;
+  color: #ffffff !important;
+}
+
+/* Selected tags with inline style override */
+.lot-auction .tag[style*="023E8A"],
+.single-auction .single-auction-tag[style*="023E8A"] {
+  background: var(--seller-main) !important;
+  color: #ffffff !important;
+}
+
+/* Modals */
+.seller-confirm-overlay {
+  background: rgba(0, 0, 0, 0.65) !important;
+}
+
+[data-theme="dark"] .seller-confirm-cancel,
+body.dark .seller-confirm-cancel {
+  background: #222 !important;
+  color: #fff !important;
+}
+
+/* Notifications */
+.seller-notifications{
+  margin-top: 30px;
+}
+.seller-notification-content h4 {
+  color: var(--seller-text) !important;
+}
+
+.seller-notification-content p,
+.seller-notification-time {
+  color: var(--seller-text-soft) !important;
+}
+
+/* Seller cards */
+.seller .seller-card {
+  border-color: var(--seller-main) !important;
+  background: var(--seller-card) !important;
+}
+
+/* Radio */
+.single-auction .single-auction-condition input[type="radio"] {
+  accent-color: var(--seller-main) !important;
+}
+.seller .seller-status {
+  margin: 0 !important;
+  font-weight: 700 !important;
+  font-size: 15px !important;
+}
+
+.seller .seller-status-verified {
+  color: #1f8b4c !important;
+}
+
+.seller .seller-status-pending,
+.seller .seller-status-required {
+  color: #d48806 !important;
+}
+
+[data-theme="dark"] .seller .seller-status-verified,
+body.dark .seller .seller-status-verified {
+  color: #39d98a !important;
+}
+
+[data-theme="dark"] .seller .seller-status-pending,
+[data-theme="dark"] .seller .seller-status-required,
+body.dark .seller .seller-status-pending,
+body.dark .seller .seller-status-required {
+  color: #ffb84d !important;
+}
+
+[data-theme="dark"] .view-auction-page,
+body.dark .view-auction-page,
+[data-theme="dark"] .seller-view-auction,
+body.dark .seller-view-auction,
+[data-theme="dark"] .seller-delivery-page,
+body.dark .seller-delivery-page {
+  background: #050505 !important;
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] .view-auction-shell,
+[data-theme="dark"] .view-auction-item,
+[data-theme="dark"] .view-auction-box,
+[data-theme="dark"] .view-auction-attr,
+[data-theme="dark"] .seller-delivery-header,
+[data-theme="dark"] .seller-delivery-card,
+[data-theme="dark"] .seller-delivery-value,
+[data-theme="dark"] .sva-header,
+[data-theme="dark"] .sva-card,
+[data-theme="dark"] .sva-item,
+[data-theme="dark"] .sva-info-box,
+[data-theme="dark"] .sva-attr,
+[data-theme="dark"] .sva-modal,
+[data-theme="dark"] .sva-loading,
+body.dark .view-auction-shell,
+body.dark .view-auction-item,
+body.dark .view-auction-box,
+body.dark .view-auction-attr,
+body.dark .seller-delivery-header,
+body.dark .seller-delivery-card,
+body.dark .seller-delivery-value,
+body.dark .sva-header,
+body.dark .sva-card,
+body.dark .sva-item,
+body.dark .sva-info-box,
+body.dark .sva-attr,
+body.dark .sva-modal,
+body.dark .sva-loading {
+  background: #111111 !important;
+  border-color: #262626 !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+[data-theme="dark"] .view-auction-title,
+[data-theme="dark"] .view-auction-section-title,
+[data-theme="dark"] .view-auction-box-label,
+[data-theme="dark"] .view-auction-edit-field label,
+[data-theme="dark"] .seller-delivery-title,
+[data-theme="dark"] .seller-delivery-label,
+[data-theme="dark"] .seller-delivery-note,
+[data-theme="dark"] .sva-title,
+[data-theme="dark"] .sva-section-title,
+[data-theme="dark"] .sva-info-label,
+[data-theme="dark"] .sva-label,
+body.dark .view-auction-title,
+body.dark .view-auction-section-title,
+body.dark .view-auction-box-label,
+body.dark .view-auction-edit-field label,
+body.dark .seller-delivery-title,
+body.dark .seller-delivery-label,
+body.dark .seller-delivery-note,
+body.dark .sva-title,
+body.dark .sva-section-title,
+body.dark .sva-info-label,
+body.dark .sva-label {
+  color: #4da3ff !important;
+}
+
+[data-theme="dark"] .view-auction-name,
+[data-theme="dark"] .view-auction-item-title,
+[data-theme="dark"] .view-auction-box-value,
+[data-theme="dark"] .view-auction-attr,
+[data-theme="dark"] .seller-delivery-value,
+[data-theme="dark"] .sva-item-title,
+[data-theme="dark"] .sva-info-value,
+[data-theme="dark"] .sva-attr-value,
+body.dark .view-auction-name,
+body.dark .view-auction-item-title,
+body.dark .view-auction-box-value,
+body.dark .view-auction-attr,
+body.dark .seller-delivery-value,
+body.dark .sva-item-title,
+body.dark .sva-info-value,
+body.dark .sva-attr-value {
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] .view-auction-desc,
+[data-theme="dark"] .view-auction-chip,
+[data-theme="dark"] .seller-delivery-subtitle,
+[data-theme="dark"] .sva-subtitle,
+[data-theme="dark"] .sva-description,
+[data-theme="dark"] .sva-chip,
+[data-theme="dark"] .sva-file-note,
+[data-theme="dark"] .sva-modal-text,
+body.dark .view-auction-desc,
+body.dark .view-auction-chip,
+body.dark .seller-delivery-subtitle,
+body.dark .sva-subtitle,
+body.dark .sva-description,
+body.dark .sva-chip,
+body.dark .sva-file-note,
+body.dark .sva-modal-text {
+  color: #cfcfcf !important;
+}
+
+[data-theme="dark"] .view-auction-input,
+[data-theme="dark"] .view-auction-select,
+[data-theme="dark"] .view-auction-textarea,
+[data-theme="dark"] .sva-input,
+[data-theme="dark"] .sva-select,
+[data-theme="dark"] .sva-textarea,
+body.dark .view-auction-input,
+body.dark .view-auction-select,
+body.dark .view-auction-textarea,
+body.dark .sva-input,
+body.dark .sva-select,
+body.dark .sva-textarea {
+  background: #000000 !important;
+  color: #ffffff !important;
+  border-color: #333333 !important;
+}
+
+[data-theme="dark"] .view-auction-input::placeholder,
+[data-theme="dark"] .view-auction-textarea::placeholder,
+[data-theme="dark"] .sva-input::placeholder,
+[data-theme="dark"] .sva-textarea::placeholder,
+body.dark .view-auction-input::placeholder,
+body.dark .view-auction-textarea::placeholder,
+body.dark .sva-input::placeholder,
+body.dark .sva-textarea::placeholder {
+  color: #9ca3af !important;
+}
+
+[data-theme="dark"] .view-auction-head-fallback,
+[data-theme="dark"] .view-auction-item-image-fallback,
+[data-theme="dark"] .sva-image-fallback,
+body.dark .view-auction-head-fallback,
+body.dark .view-auction-item-image-fallback,
+body.dark .sva-image-fallback {
+  background: #000000 !important;
+  color: #9ca3af !important;
+  border-color: #333333 !important;
+}
+
+[data-theme="dark"] .view-auction-chip,
+[data-theme="dark"] .sva-chip,
+body.dark .view-auction-chip,
+body.dark .sva-chip {
+  background: #1a1a1a !important;
+  border: 1px solid #333333 !important;
+}
+
+[data-theme="dark"] .view-auction-btn-back,
+[data-theme="dark"] .sva-btn-secondary,
+[data-theme="dark"] .seller-delivery-back-btn,
+body.dark .view-auction-btn-back,
+body.dark .sva-btn-secondary,
+body.dark .seller-delivery-back-btn {
+  background: #1a1a1a !important;
+  color: #4da3ff !important;
+  border: 1px solid #333333 !important;
+}
+
+[data-theme="dark"] .seller-delivery-note,
+body.dark .seller-delivery-note {
+  background: #071d36 !important;
+  border-color: #123c66 !important;
+}
+
+[data-theme="dark"] .seller-delivery-copy-btn:disabled,
+body.dark .seller-delivery-copy-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+[data-theme="dark"] .seller-history,
+body.dark .seller-history {
+  background: #050505 !important;
+  color: #fff !important;
+}
+
+[data-theme="dark"] .seller-history-top,
+[data-theme="dark"] .history-card,
+[data-theme="dark"] .history-date-box,
+[data-theme="dark"] .seller-history-empty,
+[data-theme="dark"] .seller-history-page-loading,
+body.dark .seller-history-top,
+body.dark .history-card,
+body.dark .history-date-box,
+body.dark .seller-history-empty,
+body.dark .seller-history-page-loading {
+  background: #111 !important;
+  border-color: #2a2a2a !important;
+  color: #fff !important;
+  box-shadow: none !important;
+}
+
+[data-theme="dark"] .seller-history-title,
+body.dark .seller-history-title {
+  color: #4da3ff !important;
+}
+
+[data-theme="dark"] .history-card-title,
+[data-theme="dark"] .history-date-value,
+[data-theme="dark"] .history-price-value,
+body.dark .history-card-title,
+body.dark .history-date-value,
+body.dark .history-price-value {
+  color: #fff !important;
+}
+
+[data-theme="dark"] .history-card-desc,
+[data-theme="dark"] .history-date-label,
+[data-theme="dark"] .history-price-label,
+body.dark .history-card-desc,
+body.dark .history-date-label,
+body.dark .history-price-label {
+  color: #bdbdbd !important;
+}
+
+[data-theme="dark"] .history-card-chip,
+body.dark .history-card-chip {
+  background: #1b1b1b !important;
+  color: #ddd !important;
+  border: 1px solid #333 !important;
+}
+
+[data-theme="dark"] .seller-history-search,
+[data-theme="dark"] .seller-history-select,
+body.dark .seller-history-search,
+body.dark .seller-history-select {
+  background: #000 !important;
+  color: #fff !important;
+  border-color: #333 !important;
+}
+
+[data-theme="dark"] .history-card-image-fallback,
+body.dark .history-card-image-fallback {
+  background: #000 !important;
+  border-color: #333 !important;
+}
+.seller-shipping-title{
+  padding: 0 0 20px !important;
+}
+.seller .seller-user-text .status-verified {
+  color: #198754 !important;
+}
+
+.seller .seller-user-text .status-pending {
+  color: #a46800 !important;
+}
+
+.seller .seller-user-text .status-not-verified {
+  color: #c92a2a !important;
 }
 

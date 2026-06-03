@@ -52,12 +52,17 @@ export default function Seller_account_edit() {
     if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
     if (raw.startsWith("data:image/")) return raw;
 
+    const cleaned = raw.replace(/\s/g, "");
+
     const looksLikeBase64 =
-      /^[A-Za-z0-9+/=\s]+$/.test(raw) && !raw.includes("{") && !raw.includes("}");
+      /^[A-Za-z0-9+/=]+$/.test(cleaned) &&
+      cleaned.length > 80 &&
+      !cleaned.includes("{") &&
+      !cleaned.includes("}");
 
     if (!looksLikeBase64) return "";
 
-    return `data:image/png;base64,${raw.replace(/\s/g, "")}`;
+    return `data:image/png;base64,${cleaned}`;
   };
 
   const selectedCountryId = useMemo(
@@ -75,6 +80,7 @@ export default function Seller_account_edit() {
         setError("");
 
         let profileData = null;
+
         try {
           profileData = await getSellerBusinessAccount();
         } catch {
@@ -91,6 +97,7 @@ export default function Seller_account_edit() {
             profileData?.logo ||
             ""
         );
+
         setCountries(Array.isArray(countriesData) ? countriesData : []);
 
         const currentCityId = Number(profileData?.cityId || 0);
@@ -106,7 +113,9 @@ export default function Seller_account_edit() {
 
         let citiesData = [];
         if (currentCountryId) {
-          citiesData = await getCitiesByCountryId(currentCountryId).catch(() => []);
+          citiesData = await getCitiesByCountryId(currentCountryId).catch(
+            () => []
+          );
         }
 
         if (!mounted) return;
@@ -203,6 +212,7 @@ export default function Seller_account_edit() {
 
     if (name === "storeLogo") {
       const file = files?.[0] || null;
+
       setFormData((prev) => ({
         ...prev,
         storeLogo: file,
@@ -213,6 +223,7 @@ export default function Seller_account_edit() {
         reader.onload = () => setPreview(reader.result);
         reader.readAsDataURL(file);
       }
+
       return;
     }
 
@@ -228,6 +239,7 @@ export default function Seller_account_edit() {
         cityId: 0,
         city: "",
       }));
+
       return;
     }
 
@@ -241,6 +253,7 @@ export default function Seller_account_edit() {
         cityId: selectedId,
         city: selectedCity,
       }));
+
       return;
     }
 
@@ -295,55 +308,183 @@ export default function Seller_account_edit() {
   };
 
   return (
-    <div className="account py-3" dir={isArabic ? "rtl" : "ltr"}>
-      <div className="container" style={{ maxWidth: 700 }}>
-        <h1>{t("editSellerProfile")}</h1>
+    <div className="seller-edit-account-page" dir={isArabic ? "rtl" : "ltr"}>
+      <style>{`
+        .seller-edit-account-page {
+          min-height: 100vh;
+          background: var(--seller-edit-bg, #f5f6fa);
+          padding: 36px 0 70px;
+          font-family: Arial, Helvetica, sans-serif;
+          color: var(--seller-edit-text, #1f2937);
+        }
+
+        .seller-edit-account-page * {
+          box-sizing: border-box;
+        }
+
+        .seller-edit-account-container {
+          width: min(760px, 94%);
+          margin: 0 auto;
+        }
+
+        .seller-edit-account-title {
+          margin: 0 0 24px;
+          color: var(--seller-edit-primary, #023E8A);
+          font-size: 34px;
+          font-weight: 900;
+          text-align: center;
+          text-transform: uppercase;
+        }
+
+        .seller-edit-account-form {
+          width: 100%;
+          background: transparent !important;
+          border: none !important;
+          box-shadow: none !important;
+          padding: 0 !important;
+        }
+
+        .seller-edit-avatar-wrap {
+          width: 128px;
+          height: 128px;
+          border-radius: 50%;
+          overflow: hidden;
+          margin: 0 auto 26px;
+          background: var(--seller-edit-avatar-bg, #eef2f7);
+          border: 3px solid var(--seller-edit-avatar-border, #ffffff);
+          box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .seller-edit-avatar-wrap img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+          border-radius: 50%;
+        }
+
+        .seller-edit-field {
+          margin-bottom: 18px;
+        }
+
+        .seller-edit-label {
+          display: block;
+          margin-bottom: 8px;
+          color: var(--seller-edit-primary, #023E8A);
+          font-size: 15px;
+          font-weight: 800;
+        }
+
+        .seller-edit-input {
+          width: 100%;
+          min-height: 52px;
+          border-radius: 8px;
+          border: 1px solid var(--seller-edit-input-border, #d5dce8);
+          background: var(--seller-edit-input-bg, #ffffff);
+          color: var(--seller-edit-input-text, #1f2937);
+          padding: 12px 14px;
+          font-size: 16px;
+          outline: none;
+        }
+
+        .seller-edit-input:focus {
+          border-color: var(--seller-edit-primary, #023E8A);
+          box-shadow: 0 0 0 3px rgba(2, 62, 138, 0.1);
+        }
+
+        .seller-edit-textarea {
+          min-height: 130px;
+          resize: vertical;
+        }
+
+        .seller-edit-actions {
+          display: flex;
+          gap: 12px;
+          margin-top: 24px;
+        }
+
+        .seller-edit-save,
+        .seller-edit-cancel {
+          flex: 1;
+          min-height: 52px;
+          border: none;
+          border-radius: 10px;
+          font-size: 16px;
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        .seller-edit-save {
+          background: var(--seller-edit-primary, #023E8A);
+          color: #fff;
+        }
+
+        .seller-edit-cancel {
+          background: var(--seller-edit-cancel-bg, #eef2ff);
+          color: var(--seller-edit-primary, #023E8A);
+        }
+
+        .seller-edit-save:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
+        }
+
+        [data-theme="dark"] .seller-edit-account-page,
+        body.dark .seller-edit-account-page {
+          --seller-edit-bg: #000;
+          --seller-edit-text: #fff;
+          --seller-edit-primary: #4da3ff;
+          --seller-edit-input-bg: #000;
+          --seller-edit-input-text: #fff;
+          --seller-edit-input-border: #333;
+          --seller-edit-cancel-bg: #111;
+          --seller-edit-avatar-bg: #111;
+          --seller-edit-avatar-border: #111;
+        }
+
+        @media (max-width: 600px) {
+          .seller-edit-account-title {
+            font-size: 28px;
+          }
+
+          .seller-edit-actions {
+            flex-direction: column;
+          }
+        }
+      `}</style>
+
+      <div className="seller-edit-account-container">
+        <h1 className="seller-edit-account-title">{t("editSellerProfile")}</h1>
 
         {loading ? (
           <div className="alert alert-info">{t("loading")}</div>
         ) : (
-          <form onSubmit={handleSubmit}>
+          <form className="seller-edit-account-form" onSubmit={handleSubmit}>
             {message ? <div className="alert alert-success">{message}</div> : null}
             {error ? <div className="alert alert-danger">{error}</div> : null}
 
-            <div className="mb-3 text-center">
+            <div className="seller-edit-avatar-wrap">
               {toImageSrc(preview) ? (
-                <img
-                  src={toImageSrc(preview)}
-                  alt={t("storeLogo")}
-                  style={{
-                    width: 110,
-                    height: 110,
-                    borderRadius: "50%",
-                    objectFit: "cover",
-                    border: "1px solid #e5e7eb",
-                  }}
-                />
+                <img src={toImageSrc(preview)} alt={t("storeLogo")} />
               ) : (
-                <div
+                <i
+                  className="fa-regular fa-image"
                   style={{
-                    width: 110,
-                    height: 110,
-                    borderRadius: "50%",
-                    margin: "0 auto",
-                    background: "#eef2f7",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
                     color: "#8a94a6",
-                    fontSize: 32,
+                    fontSize: 36,
                   }}
-                >
-                  <i className="fa-regular fa-image"></i>
-                </div>
+                ></i>
               )}
             </div>
 
-            <div className="mb-3">
-              <label className="form-label">{t("storeName")}</label>
+            <div className="seller-edit-field">
+              <label className="seller-edit-label">{t("storeName")}</label>
               <input
                 type="text"
-                className="form-control"
+                className="seller-edit-input"
                 name="storeName"
                 value={formData.storeName}
                 onChange={handleChange}
@@ -351,11 +492,11 @@ export default function Seller_account_edit() {
               />
             </div>
 
-            <div className="mb-3">
-              <label className="form-label">{t("phoneNumber")}</label>
+            <div className="seller-edit-field">
+              <label className="seller-edit-label">{t("phoneNumber")}</label>
               <input
                 type="text"
-                className="form-control"
+                className="seller-edit-input"
                 name="phoneNumber"
                 value={formData.phoneNumber}
                 onChange={handleChange}
@@ -363,10 +504,10 @@ export default function Seller_account_edit() {
               />
             </div>
 
-            <div className="mb-3">
-              <label className="form-label">{t("country")}</label>
+            <div className="seller-edit-field">
+              <label className="seller-edit-label">{t("country")}</label>
               <select
-                className="form-control"
+                className="seller-edit-input"
                 name="countryId"
                 value={formData.countryId || ""}
                 onChange={handleChange}
@@ -381,10 +522,10 @@ export default function Seller_account_edit() {
               </select>
             </div>
 
-            <div className="mb-3">
-              <label className="form-label">{t("city")}</label>
+            <div className="seller-edit-field">
+              <label className="seller-edit-label">{t("city")}</label>
               <select
-                className="form-control"
+                className="seller-edit-input"
                 name="cityId"
                 value={formData.cityId || ""}
                 onChange={handleChange}
@@ -399,33 +540,32 @@ export default function Seller_account_edit() {
               </select>
             </div>
 
-            <div className="mb-3">
-              <label className="form-label">{t("description")}</label>
+            <div className="seller-edit-field">
+              <label className="seller-edit-label">{t("description")}</label>
               <textarea
-                className="form-control"
+                className="seller-edit-input seller-edit-textarea"
                 name="description"
-                rows="4"
                 value={formData.description}
                 onChange={handleChange}
                 placeholder={t("enterDescription")}
-              ></textarea>
+              />
             </div>
 
-            <div className="mb-4">
-              <label className="form-label">{t("storeLogo")}</label>
+            <div className="seller-edit-field">
+              <label className="seller-edit-label">{t("storeLogo")}</label>
               <input
                 type="file"
-                className="form-control"
+                className="seller-edit-input"
                 name="storeLogo"
                 accept="image/*"
                 onChange={handleChange}
               />
             </div>
 
-            <div style={{ display: "flex", gap: 12 }}>
+            <div className="seller-edit-actions">
               <button
                 type="submit"
-                className="btn btn-primary"
+                className="seller-edit-save"
                 disabled={submitLoading}
               >
                 {submitLoading ? t("saving") : t("saveChanges")}
@@ -433,7 +573,7 @@ export default function Seller_account_edit() {
 
               <button
                 type="button"
-                className="btn btn-outline-secondary"
+                className="seller-edit-cancel"
                 onClick={() => navigate(-1)}
               >
                 {t("cancel")}

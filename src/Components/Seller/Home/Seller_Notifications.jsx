@@ -16,6 +16,10 @@ export default function Seller_Notifications() {
   const { t, i18n } = useTranslation();
   const isArabic = i18n.language === "ar";
 
+  const isDarkMode =
+    document.body.classList.contains("dark") ||
+    document.documentElement.classList.contains("dark");
+
   const [favicon] = useState(icon);
   const navigate = useNavigate();
   const didLoadRef = useRef(false);
@@ -34,6 +38,7 @@ export default function Seller_Notifications() {
   useEffect(() => {
     const updateFavicon = (iconUrl) => {
       const link = document.querySelector("link[rel~='icon']");
+
       if (!link) {
         const newLink = document.createElement("link");
         newLink.rel = "icon";
@@ -53,23 +58,32 @@ export default function Seller_Notifications() {
     if (document.getElementById(styleId)) return;
 
     const style = document.createElement("style");
+
     style.id = styleId;
+
     style.innerHTML = `
       @keyframes sellerSkeletonShimmer {
-        0% { background-position: 200% 0; }
-        100% { background-position: -200% 0; }
+        0% {
+          background-position: 200% 0;
+        }
+        100% {
+          background-position: -200% 0;
+        }
       }
     `;
+
     document.head.appendChild(style);
 
     return () => {
       const node = document.getElementById(styleId);
+
       if (node) node.remove();
     };
   }, []);
 
   const getApiErrorMessage = (err, fallback) => {
     const statusCode = err?.response?.status;
+
     const apiMessage =
       err?.response?.data?.message ||
       err?.response?.data?.Message ||
@@ -95,7 +109,9 @@ export default function Seller_Notifications() {
       setError("");
 
       const data = await getNotifications();
+
       const list = Array.isArray(data) ? data : [];
+
       const unseenBeforeOpen = getUnseenNotificationIds(list);
 
       setNotifications(list);
@@ -115,33 +131,48 @@ export default function Seller_Notifications() {
 
   useEffect(() => {
     if (didLoadRef.current) return;
+
     didLoadRef.current = true;
+
     loadNotifications();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const formatTimeAgo = (dateValue) => {
     if (!dateValue) return t("recently");
 
     const parsed = new Date(dateValue);
+
     if (Number.isNaN(parsed.getTime())) {
       return String(dateValue);
     }
 
     const diffMs = Date.now() - parsed.getTime();
+
     const diffMin = Math.floor(diffMs / (1000 * 60));
 
     if (diffMin < 1) return t("momentsAgo");
-    if (diffMin < 60) return t("minutesAgo", { count: diffMin });
+
+    if (diffMin < 60) {
+      return t("minutesAgo", { count: diffMin });
+    }
 
     const diffHours = Math.floor(diffMin / 60);
-    if (diffHours < 24) return t("hoursAgo", { count: diffHours });
+
+    if (diffHours < 24) {
+      return t("hoursAgo", { count: diffHours });
+    }
 
     const diffDays = Math.floor(diffHours / 24);
-    if (diffDays === 1) return t("yesterday");
-    if (diffDays < 7) return t("daysAgo", { count: diffDays });
 
-    return parsed.toLocaleDateString(i18n.language);
+    if (diffDays === 1) return t("yesterday");
+
+    if (diffDays < 7) {
+      return t("daysAgo", { count: diffDays });
+    }
+
+    return parsed.toLocaleDateString(
+      i18n.language === "ar" ? "en-GB" : i18n.language
+    );  
   };
 
   const resolveType = (item) => {
@@ -196,18 +227,25 @@ export default function Seller_Notifications() {
     switch (type) {
       case "report":
         return { color: "#e53935" };
+
       case "order":
         return { color: "#023e8a" };
+
       case "wallet":
         return { color: "#2e7d32" };
+
       case "review":
         return { color: "#f4b400" };
+
       case "shipping":
         return { color: "#6c757d" };
+
       case "verification":
         return { color: "#9c27b0" };
+
       case "stats":
         return { color: "#d35400" };
+
       default:
         return { color: "#023e8a" };
     }
@@ -217,18 +255,25 @@ export default function Seller_Notifications() {
     switch (type) {
       case "report":
         return "fa-circle-exclamation";
+
       case "order":
         return "fa-box";
+
       case "wallet":
         return "fa-wallet";
+
       case "review":
         return "fa-star";
+
       case "shipping":
         return "fa-truck";
+
       case "verification":
         return "fa-id-card";
+
       case "stats":
         return "fa-chart-line";
+
       default:
         return "fa-bell";
     }
@@ -246,7 +291,6 @@ export default function Seller_Notifications() {
         isFresh: freshIds.includes(String(item.id)),
       };
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notifications, freshIds, i18n.language]);
 
   const allSelected =
@@ -292,9 +336,11 @@ export default function Seller_Notifications() {
       setNotifications((prev) =>
         prev.filter((item) => !selectedIds.includes(String(item.id)))
       );
+
       setFreshIds((prev) =>
         prev.filter((id) => !selectedIds.includes(String(id)))
       );
+
       setSelectedIds([]);
     } catch (err) {
       setError(
@@ -307,7 +353,9 @@ export default function Seller_Notifications() {
 
   const handleDeleteOne = async (id) => {
     const notificationId = String(id);
+
     const confirmed = window.confirm(t("deleteNotificationConfirm"));
+
     if (!confirmed) return;
 
     try {
@@ -319,10 +367,14 @@ export default function Seller_Notifications() {
       setNotifications((prev) =>
         prev.filter((item) => String(item.id) !== notificationId)
       );
+
       setSelectedIds((prev) =>
         prev.filter((itemId) => itemId !== notificationId)
       );
-      setFreshIds((prev) => prev.filter((itemId) => itemId !== notificationId));
+
+      setFreshIds((prev) =>
+        prev.filter((itemId) => itemId !== notificationId)
+      );
     } catch (err) {
       setError(getApiErrorMessage(err, t("failedToDeleteNotification")));
     } finally {
@@ -331,8 +383,9 @@ export default function Seller_Notifications() {
   };
 
   const skeletonBlockStyle = {
-    background:
-      "linear-gradient(90deg, #f1f1f1 25%, #e7e7e7 37%, #f1f1f1 63%)",
+    background: isDarkMode
+      ? "linear-gradient(90deg, #1a1a1a 25%, #2a2a2a 37%, #1a1a1a 63%)"
+      : "linear-gradient(90deg, #f1f1f1 25%, #e7e7e7 37%, #f1f1f1 63%)",
     backgroundSize: "400% 100%",
     animation: "sellerSkeletonShimmer 1.4s ease infinite",
     borderRadius: "10px",
@@ -340,7 +393,7 @@ export default function Seller_Notifications() {
 
   return (
     <div
-      className="notifications seller-notifications"
+      className="seller-notifications"
       dir={isArabic ? "rtl" : "ltr"}
     >
       <div className="container">
@@ -354,7 +407,9 @@ export default function Seller_Notifications() {
             marginBottom: "20px",
           }}
         >
-          <h1 style={{ margin: 0 }}>{t("sellerNotificationsTitle")}</h1>
+          <h1 style={{ margin: 0 }}>
+            {t("sellerNotificationsTitle")}
+          </h1>
 
           <div
             style={{
@@ -395,7 +450,9 @@ export default function Seller_Notifications() {
             >
               {deleting
                 ? t("deleting")
-                : t("deleteSelectedCount", { count: selectedIds.length })}
+                : t("deleteSelectedCount", {
+                    count: selectedIds.length,
+                  })}
             </button>
           </div>
         </div>
@@ -429,7 +486,10 @@ export default function Seller_Notifications() {
               checked={allSelected}
               onChange={toggleSelectAll}
             />
-            <label htmlFor="select-all-notifications">{t("selectAll")}</label>
+
+            <label htmlFor="select-all-notifications">
+              {t("selectAll")}
+            </label>
           </div>
         )}
 
@@ -444,11 +504,20 @@ export default function Seller_Notifications() {
                   gap: "16px",
                   padding: "22px 18px",
                   borderRadius: "18px",
-                  background: "#fff",
-                  boxShadow: "0 6px 20px rgba(0,0,0,0.05)",
+                  background: isDarkMode ? "#111" : "#fff",
+                  boxShadow: isDarkMode
+                    ? "0 6px 20px rgba(255,255,255,0.03)"
+                    : "0 6px 20px rgba(0,0,0,0.05)",
                 }}
               >
-                <div style={{ width: "18px", height: "18px", ...skeletonBlockStyle }} />
+                <div
+                  style={{
+                    width: "18px",
+                    height: "18px",
+                    ...skeletonBlockStyle,
+                  }}
+                />
+
                 <div
                   style={{
                     width: "48px",
@@ -457,6 +526,7 @@ export default function Seller_Notifications() {
                     ...skeletonBlockStyle,
                   }}
                 />
+
                 <div style={{ flex: 1 }}>
                   <div
                     style={{
@@ -467,6 +537,7 @@ export default function Seller_Notifications() {
                       ...skeletonBlockStyle,
                     }}
                   />
+
                   <div
                     style={{
                       width: "380px",
@@ -476,9 +547,10 @@ export default function Seller_Notifications() {
                     }}
                   />
                 </div>
+
                 <div
                   style={{
-                    minWidth: "120px",
+                    width: "120px",
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "flex-end",
@@ -492,6 +564,7 @@ export default function Seller_Notifications() {
                       ...skeletonBlockStyle,
                     }}
                   />
+
                   <div
                     style={{
                       width: "78px",
@@ -523,10 +596,13 @@ export default function Seller_Notifications() {
               key={item.id}
               style={{
                 display: "flex",
-                alignItems: "stretch",
+                alignItems: "center",
                 gap: "14px",
                 position: "relative",
                 padding: "18px",
+                width: "100%",
+                overflow: "hidden",
+                flexWrap: "nowrap",
               }}
             >
               {item.isFresh && (
@@ -550,6 +626,7 @@ export default function Seller_Notifications() {
                   display: "flex",
                   alignItems: "flex-start",
                   paddingTop: "8px",
+                  flexShrink: 0,
                 }}
               >
                 <input
@@ -566,7 +643,7 @@ export default function Seller_Notifications() {
                   justifyContent: "space-between",
                   gap: "16px",
                   flex: 1,
-                  flexWrap: "wrap",
+                  minWidth: 0,
                 }}
               >
                 <div
@@ -575,12 +652,15 @@ export default function Seller_Notifications() {
                     gap: "14px",
                     alignItems: "center",
                     flex: 1,
-                    minWidth: "260px",
+                    minWidth: 0,
+                    overflow: "hidden",
                   }}
                 >
                   <div
                     className={`notification-icon ${
-                      item.uiType === "report" ? "seller-report-icon" : ""
+                      item.uiType === "report"
+                        ? "seller-report-icon"
+                        : ""
                     }`}
                     style={{ flexShrink: 0 }}
                   >
@@ -590,12 +670,32 @@ export default function Seller_Notifications() {
                     ></i>
                   </div>
 
-                  <div className="notification-content" style={{ flex: 1 }}>
-                    <h4 style={{ marginBottom: "6px" }}>
+                  <div
+                    className="notification-content"
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                    }}
+                  >
+                    <h4
+                      style={{
+                        marginBottom: "6px",
+                        overflowWrap: "break-word",
+                        wordBreak: "break-word",
+                      }}
+                    >
                       {item.title || t("notification")}
                     </h4>
-                    <p style={{ marginBottom: 0 }}>
-                      {item.description || t("noDetailsAvailable")}
+
+                    <p
+                      style={{
+                        marginBottom: 0,
+                        overflowWrap: "break-word",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {item.description ||
+                        t("noDetailsAvailable")}
                     </p>
 
                     {item.uiType === "report" && (
@@ -612,25 +712,32 @@ export default function Seller_Notifications() {
 
                 <div
                   style={{
-                    minWidth: "120px",
+                    width: "95px",
+                    minWidth: "95px",
                     display: "flex",
                     flexDirection: "column",
-                    alignItems: isArabic ? "flex-start" : "flex-end",
-                    justifyContent: "space-between",
-                    gap: "10px",
-                    marginLeft: isArabic ? 0 : "auto",
-                    marginRight: isArabic ? "auto" : 0,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                    flexShrink: 0,
                   }}
                 >
-                  <span
-                    className="notification-time"
-                    style={{
-                      whiteSpace: "nowrap",
-                      textAlign: isArabic ? "left" : "right",
-                    }}
-                  >
-                    {item.timeLabel}
-                  </span>
+<span
+  className="notification-time"
+  style={{
+    fontSize: "12px",
+    color: "#999",
+    lineHeight: "1",
+    whiteSpace: "nowrap",
+    position: "static",
+    direction: "ltr",
+    unicodeBidi: "embed",
+    textAlign: "center",
+    display: "block",
+  }}
+>
+  {item.timeLabel}
+</span>
 
                   <button
                     type="button"
@@ -642,7 +749,9 @@ export default function Seller_Notifications() {
                       color: "#d32f2f",
                       padding: "10px 14px",
                       borderRadius: "10px",
-                      cursor: deleting ? "not-allowed" : "pointer",
+                      cursor: deleting
+                        ? "not-allowed"
+                        : "pointer",
                       minWidth: "78px",
                     }}
                   >

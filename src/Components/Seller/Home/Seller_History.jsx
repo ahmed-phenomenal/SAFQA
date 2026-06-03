@@ -180,7 +180,14 @@ export default function Seller_History() {
   };
 
   const openAuction = (auctionId) => {
-    navigate(`/seller-view-auction/${auctionId}`);
+    const id = Number(auctionId || 0);
+
+    if (!id) {
+      setError("Invalid auction ID.");
+      return;
+    }
+
+    navigate(`/seller-view-auction/${id}`);
   };
 
   const exportViewedAuctionsPdf = () => {
@@ -352,6 +359,11 @@ export default function Seller_History() {
           cursor: pointer;
         }
 
+        .seller-history-export:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
+        }
+
         .seller-history-list {
           display: flex;
           flex-direction: column;
@@ -368,6 +380,13 @@ export default function Seller_History() {
           padding: 20px;
           box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
           border: 1px solid #eef2f7;
+          cursor: pointer;
+          transition: transform 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .history-card:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 12px 28px rgba(0,0,0,0.08);
         }
 
         .history-card-top {
@@ -620,7 +639,16 @@ export default function Seller_History() {
           ) : filteredHistory.length > 0 ? (
             <>
               {filteredHistory.map((item) => (
-                <div className="history-card" key={item.id}>
+                <div
+                  className="history-card"
+                  key={item.id}
+                  onClick={() => openAuction(item.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") openAuction(item.id);
+                  }}
+                >
                   <div className="history-card-top">
                     {item.image ? (
                       <img
@@ -686,7 +714,10 @@ export default function Seller_History() {
                       <button
                         type="button"
                         className="history-view-btn"
-                        onClick={() => openAuction(item.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openAuction(item.id);
+                        }}
                       >
                         {t("viewAuction")}
                       </button>

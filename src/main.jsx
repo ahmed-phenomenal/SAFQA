@@ -11,6 +11,9 @@ import AuthContextProvider from "./Context/AuthContext.jsx";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ToastContainer } from "react-toastify";
 import "./i18n.js";
+import { initTheme } from "./utiles/themeManager.js";
+
+initTheme();
 
 const queryClient = new QueryClient();
 

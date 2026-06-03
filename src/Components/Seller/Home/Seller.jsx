@@ -53,6 +53,7 @@ const getCurrentAccountKey = () => {
 };
 
 const getScopedKey = (baseKey) => `${baseKey}:${getCurrentAccountKey()}`;
+
 const markSellerVerifiedLocally = () => {
   if (typeof window === "undefined") return false;
 
@@ -80,6 +81,7 @@ const markSellerVerifiedLocally = () => {
 
   return true;
 };
+
 const hasLocalVerifiedState = () => {
   return (
     localStorage.getItem("seller_verified_global") === "true" ||
@@ -382,7 +384,6 @@ export default function Seller() {
       setNotificationsLoading(true);
       const data = await getNotifications();
 
-      // If notifications API succeeds, backend accepted seller as verified.
       applyVerifiedFromProtectedApi();
 
       const list = Array.isArray(data) ? data : [];
@@ -503,6 +504,36 @@ export default function Seller() {
 
   const isPendingOrSubmitted =
     verificationStatus?.isPending || verificationStatus?.hasSubmittedVerification;
+
+  const getSellerStatusStyle = () => {
+    if (verificationStatus?.isVerified) {
+      return {
+        color: "#198754",
+        fontWeight: 800,
+        fontSize: "13px",
+        marginTop: "6px",
+        marginBottom: 0,
+      };
+    }
+
+    if (isPendingOrSubmitted) {
+      return {
+        color: "#a46800",
+        fontWeight: 800,
+        fontSize: "13px",
+        marginTop: "6px",
+        marginBottom: 0,
+      };
+    }
+
+    return {
+      color: "#c92a2a",
+      fontWeight: 800,
+      fontSize: "13px",
+      marginTop: "6px",
+      marginBottom: 0,
+    };
+  };
 
   return (
     <div className="seller">
@@ -753,19 +784,14 @@ export default function Seller() {
                         ? t("helloName", { name: sellerProfile.name })
                         : "-"}
                     </h3>
-                    {verificationStatus?.isVerified ? (
-                      <p style={{ margin: 0, color: "#1f8b4c", fontWeight: 600 }}>
-                        {t("verifiedSeller")}
-                      </p>
-                    ) : isPendingOrSubmitted ? (
-                      <p style={{ margin: 0, color: "#d48806", fontWeight: 600 }}>
-                        {t("pendingReview")}
-                      </p>
-                    ) : (
-                      <p style={{ margin: 0, color: "#d48806", fontWeight: 600 }}>
-                        {t("verificationRequired")}
-                      </p>
-                    )}
+
+{verificationStatus?.isVerified ? (
+  <p className="status-verified">{t("verifiedSeller")}</p>
+) : isPendingOrSubmitted ? (
+  <p className="status-pending">{t("pendingReview")}</p>
+) : (
+  <p className="status-not-verified">{t("verificationRequired")}</p>
+)}
                   </div>
                 </>
               )}
