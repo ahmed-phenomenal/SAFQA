@@ -213,9 +213,7 @@ export default function Admin() {
           <li><Link className={isActive("/admin_sellers")}       to="/admin_sellers">      <i className="fa fa-user-secret" />    <span>{t("allSellers","All Sellers")}</span></Link></li>
           <li><Link className={isActive("/admin_auctions")}      to="/admin_auctions">     <i className="fa fa-gavel" />          <span>{t("allAuctions","All Auctions")}</span></Link></li>
           <li><Link className={isActive("/admin_payments")}      to="/admin_payments">     <i className="fa fa-credit-card" />    <span>{t("paymentLogs","Payment Logs")}</span></Link></li>
-          <li><Link className={isActive("/admin_delivery")}      to="/admin_delivery">     <i className="fa fa-truck" />          <span>{t("adminDelivery","Admin Delivery")}</span></Link></li>
           <li><Link className={isActive("/admin_track_chats")}   to="/admin_track_chats">  <i className="fa fa-comments" />       <span>{t("trackChats","Track Chats")}</span></Link></li>
-          <li><Link className={isActive("/admin_reports")}       to="/admin_reports">      <i className="fa-solid fa-clipboard-list" /><span>{t("reports","Reports")}</span></Link></li>
           <li><Link className={isActive("/admin_announcements")} to="/admin_announcements"><i className="fa fa-bullhorn" />        <span>{t("announcements","Announcements")}</span></Link></li>
         </ul>
       </aside>

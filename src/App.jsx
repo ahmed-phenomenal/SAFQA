@@ -67,9 +67,7 @@ import Users from "./Components/Admin/Pages/Users";
 import Sellers from "./Components/Admin/Pages/Sellers";
 import Auctions from "./Components/Admin/Pages/Auctions";
 import Payments from "./Components/Admin/Pages/Payments";
-import Reports from "./Components/Admin/Pages/reports";
 import Announcements from "./Components/Admin/Pages/announcements";
-import Admin_delivery from "./Components/Admin/Pages/admin_delivery";
 import TrackChatsAdmin from "./Components/Admin/Pages/TrackChatsAdmin";
 
 import Delivery from "./Delivery/Delivery";
@@ -99,10 +97,8 @@ const router = createBrowserRouter([
           { path: "admin_users", element: <Users /> },
           { path: "admin_sellers", element: <Sellers /> },
           { path: "admin_announcements", element: <Announcements /> },
-          { path: "admin_reports", element: <Reports /> },
           { path: "admin_auctions", element: <Auctions /> },
           { path: "admin_payments", element: <Payments /> },
-          { path: "admin_delivery", element: <Admin_delivery /> },
           { path: "admin_track_chats", element: <TrackChatsAdmin /> },
         ],
       },

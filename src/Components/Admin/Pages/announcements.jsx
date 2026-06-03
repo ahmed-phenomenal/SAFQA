@@ -147,22 +147,10 @@ const handleLogout = () => {
               <span>{t("paymentLogs", "Payment Logs")}</span>
             </Link>
           </li>
-          <li>
-            <Link to="/admin_delivery">
-              <i className="fa fa-truck" />
-              <span>{t("adminDelivery", "Admin Delivery")}</span>
-            </Link>
-          </li>
           <li className={isActive("/admin_track_chats")}>
             <Link to="/admin_track_chats">
               <i className="fa fa-comments" />
               <span>{t("trackChats", "Track Chats")}</span>
-            </Link>
-          </li>
-          <li>
-            <Link to="/admin_reports">
-              <i className="fa-solid fa-clipboard-list" />
-              <span>{t("reports", "Reports")}</span>
             </Link>
           </li>
           <li>
