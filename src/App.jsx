@@ -25,7 +25,6 @@ import Wallet from "./Components/Home/wallet";
 import Privacy_Policy from "./Components/Home/Privacy_Policy";
 import How_To_Bid from "./Components/Home/How_To_Bid";
 import ConfirmLogin from "./Components/Register/ConfirmLogin";
-import SellerReview from "./Components/Home/SellerReview";
 import AuctionDetails from "./Components/Home/auction_details";
 import Track_Status from "./Components/Home/Track_Status";
 import Chat from "./Components/Home/Chat";

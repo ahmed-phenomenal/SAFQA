@@ -47,9 +47,9 @@ const getNumber = (res) => {
 
 const normalizeUser = (item) => ({
   id:     item?.id     || item?.userId || "",
-  name:   item?.fullName || item?.name || "-",
+  name:   item?.fullName || item?.name || item?.userName || "-",
   email:  item?.email  || "-",
-  status: String(item?.status || "Active").toLowerCase(),
+  status: String(item?.status || item?.isActive ? "active" : "blocked").toLowerCase(),
   action: item?.action || "",
 });
 
@@ -410,21 +410,54 @@ export default function Users() {
     try {
       setTableLoading(true);
       const res  = await getUsersPage(targetPage, pageSize);
-      const root = res?.data || {};
-      const list = Array.isArray(root?.data) ? root.data
-                 : Array.isArray(root)        ? root
-                 : [];
-      setUsers(list.map(normalizeUser));
-      setPage(Number(root?.currentPage || targetPage));
-      setTotalPages(Number(root?.totalPages || 1));
-
-      // Also update total from the authoritative totalCount in this response
-      const apiTotal = Number(
-        root?.totalCount || root?.totalcount || root?.total || 0
-      );
-      if (apiTotal > 0) {
-        setStats((prev) => ({ ...prev, total: apiTotal }));
+      console.log("API Response:", res); // Debug log
+      
+      // Handle different response structures
+      let userList = [];
+      let totalCount = 0;
+      let currentPage = targetPage;
+      let totalPagesCount = 1;
+      
+      if (res?.data) {
+        // If response has data property
+        if (Array.isArray(res.data)) {
+          // Direct array response
+          userList = res.data;
+          totalCount = userList.length;
+        } else if (res.data.items || res.data.data) {
+          // Paginated response with items/data array
+          userList = res.data.items || res.data.data || [];
+          totalCount = res.data.totalCount || res.data.total || userList.length;
+          currentPage = res.data.page || res.data.currentPage || targetPage;
+          totalPagesCount = res.data.totalPages || Math.ceil(totalCount / pageSize) || 1;
+        } else if (typeof res.data === 'object') {
+          // Try to extract array from response
+          userList = Object.values(res.data).find(val => Array.isArray(val)) || [];
+          totalCount = userList.length;
+        }
+      } else if (Array.isArray(res)) {
+        // Response is directly an array
+        userList = res;
+        totalCount = userList.length;
+      } else if (res?.items || res?.data) {
+        // Response has items or data at root
+        userList = res.items || res.data || [];
+        totalCount = res.totalCount || res.total || userList.length;
+        currentPage = res.page || res.currentPage || targetPage;
+        totalPagesCount = res.totalPages || Math.ceil(totalCount / pageSize) || 1;
       }
+      
+      setUsers(userList.map(normalizeUser));
+      setPage(currentPage);
+      setTotalPages(totalPagesCount);
+
+      // Update total from the authoritative totalCount in this response
+      if (totalCount > 0) {
+        setStats((prev) => ({ ...prev, total: totalCount }));
+      }
+    } catch (err) {
+      console.error("Error loading users:", err);
+      setError(err?.response?.data?.message || err?.message || "Failed to load users.");
     } finally {
       setTableLoading(false);
     }

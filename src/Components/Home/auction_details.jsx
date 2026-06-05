@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import icon from "../../assets/2.png";
 import api from "../../API/axios";
+import { createDispute } from "../../API/dispute";
 import {
   placeManualBid,
   activateProxyBid,
@@ -306,8 +307,7 @@ export default function AuctionDetails() {
   const [error, setError]                 = useState("");
   const [countdown, setCountdown]         = useState("0d : 0h : 0m : 0s");
 
-  // ↓ CHANGED: favorite state for this auction
-  const [isFav, setIsFav]         = useState(false);
+  const [isFav, setIsFav]           = useState(false);
   const [favLoading, setFavLoading] = useState(false);
 
   const [depositPopup,    setDepositPopup]    = useState(false);
@@ -316,11 +316,18 @@ export default function AuctionDetails() {
   const [bidPopup,        setBidPopup]        = useState(false);
   const [proxyPopup,      setProxyPopup]      = useState(false);
 
-  const [reportPopup,   setReportPopup]   = useState(false);
-  const [reportReason,  setReportReason]  = useState("");
-  const [reportLoading, setReportLoading] = useState(false);
-  const [reportMessage, setReportMessage] = useState("");
-  const [reportSuccess, setReportSuccess] = useState(false);
+  // ── DISPUTE / REPORT STATE (mirrors Order.jsx) ──
+  const [reportPopup,       setReportPopup]       = useState(false);
+  const [reportStep,        setReportStep]        = useState(1);          // 1 = reasons, 2 = form
+  const [reportReasons,     setReportReasons]     = useState([]);
+  const [reportText,        setReportText]        = useState("");
+  const [reportSolution,    setReportSolution]    = useState("");
+  const [reportImages,      setReportImages]      = useState([]);
+  const [reportLoading,     setReportLoading]     = useState(false);
+  const [reportMessage,     setReportMessage]     = useState("");
+  const [reportSuccess,     setReportSuccess]     = useState(false);
+  const [createdDisputeId,  setCreatedDisputeId]  = useState("");
+  const fileInputRef = useRef(null);
 
   const [sellerPopup,   setSellerPopup]   = useState(false);
   const [sellerData,    setSellerData]    = useState(null);
@@ -345,6 +352,13 @@ export default function AuctionDetails() {
   const [actionMessage,   setActionMessage]   = useState("");
 
   const popupTimerRef = useRef(null);
+
+  // dispute reasons — same labels as Order.jsx
+  const disputeReasons = {
+    notReceived: t("reportReasonNotReceived", "I did not receive the item."),
+    damaged:     t("reportReasonDamaged",     "The item does not match the description / is damaged."),
+    missingParts:t("reportReasonMissingParts","The item is missing parts."),
+  };
 
   const D = useMemo(() => ({
     bg:          dark ? "#0c1117" : "#f5f7fb",
@@ -374,6 +388,8 @@ export default function AuctionDetails() {
     errorBg:     dark ? "#2d1010" : "#fff1f0",
     errorColor:  dark ? "#f87171" : "#b91c1c",
     errorBorder: dark ? "#7f1d1d" : "#fca5a5",
+    uploadBorder:dark ? "#334155" : "#cbd5e1",
+    checkRow:    dark ? "#f1f5f9" : "#374151",
   }), [dark]);
 
   useEffect(() => {
@@ -405,7 +421,6 @@ export default function AuctionDetails() {
       setProxyMax(savedProxy.max);
       setProxyStep(savedProxy.step);
 
-      // ↓ CHANGED: check if this auction is already favorited
       if (favsRes.status === "fulfilled") {
         const raw = favsRes.value?.data;
         const list = Array.isArray(raw) ? raw
@@ -432,7 +447,6 @@ export default function AuctionDetails() {
 
   const firstItem = useMemo(() => auction?.items?.[0] || null, [auction]);
 
-  // ↓ CHANGED: toggle favorite for this auction
   const handleToggleFav = async (e) => {
     e.stopPropagation();
     if (favLoading || !auction?.id) return;
@@ -452,31 +466,11 @@ export default function AuctionDetails() {
     }
   };
 
-  const fetchSellerSafe = async (sellerId) => {
-    const endpoints = [
-      `/seller/seller/${sellerId}`,
-      `/Seller/seller/${sellerId}`,
-      `/seller/${sellerId}`,
-      `/Seller/${sellerId}`,
-    ];
-    for (const ep of endpoints) {
-      try {
-        const res = await api.get(ep);
-        if (res?.data) return res;
-      } catch (err) {
-        const status = Number(err?.response?.status || 0);
-        if (status === 404 || status === 400) continue;
-        throw err;
-      }
-    }
-    throw new Error(t("sellerNotFound", "Seller not found"));
+  const openSellerPopup = () => {
+    const sid = auction?.sellerId;
+    if (!sid) return;
+    navigate(`/seller-review?sellerId=${sid}&auctionId=${Number(auctionId || auction.id || 0)}`);
   };
-
-const openSellerPopup = () => {
-  const sid = auction?.sellerId;
-  if (!sid) return;
-  navigate(`/seller-review?sellerId=${sid}&auctionId=${Number(auctionId || auction.id || 0)}`);
-};
 
   const closeSellerPopup = () => {
     if (reviewLoading) return;
@@ -532,9 +526,91 @@ const openSellerPopup = () => {
     if (popupTimerRef.current) { clearTimeout(popupTimerRef.current); popupTimerRef.current = null; }
   };
 
+  // ── DISPUTE / REPORT HELPERS ──────────────────────────────────────────────
+  const openReportPopup = () => {
+    setReportPopup(true);
+    setReportStep(1);
+    setReportReasons([]);
+    setReportText("");
+    setReportSolution("");
+    setReportImages([]);
+    setReportMessage("");
+    setReportSuccess(false);
+    setCreatedDisputeId("");
+  };
+
   const closeReportPopup = () => {
     if (reportLoading) return;
-    setReportPopup(false); setReportReason(""); setReportMessage(""); setReportSuccess(false);
+    setReportPopup(false);
+    setReportStep(1);
+    setReportLoading(false);
+  };
+
+  const toggleReason = (reason) => {
+    setReportReasons((prev) =>
+      prev.includes(reason) ? prev.filter((r) => r !== reason) : [...prev, reason]
+    );
+  };
+
+  const handleUploadImages = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const newImages = files.map((file) => ({
+      file,
+      preview: URL.createObjectURL(file),
+      name: file.name,
+    }));
+    setReportImages((prev) => [...prev, ...newImages]);
+  };
+
+  const removeUploadedImage = (index) => {
+    setReportImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSendReport = async () => {
+    try {
+      setReportLoading(true);
+      setReportMessage("");
+
+      const aId = Number(auction?.id || 0);
+
+      const description = [reportReasons.join(" | "), reportText]
+        .filter(Boolean)
+        .join("\n");
+
+      const resolutionType = reportSolution === "partial" ? 2 : 1;
+
+      const evidences = reportImages.map(
+        (img) => img.preview || img.name || "evidence"
+      );
+
+      const res = await createDispute({
+        auctionId: aId,
+        description,
+        resolutionType,
+        evidences,
+      });
+
+      const disputeId =
+        res?.disputeId   ||
+        res?.DisputeId   ||
+        res?.data?.disputeId ||
+        res?.Data?.disputeId ||
+        res?.result?.disputeId ||
+        "";
+
+      setCreatedDisputeId(disputeId);
+      setReportSuccess(true);
+    } catch (err) {
+      setReportMessage(
+        err?.response?.data?.message ||
+          err?.response?.data?.Message ||
+          err?.message ||
+          "Failed to create dispute."
+      );
+    } finally {
+      setReportLoading(false);
+    }
   };
 
   const showSuccessThenReload = () => {
@@ -625,22 +701,6 @@ const openSellerPopup = () => {
     } finally { setActionLoading(false); }
   };
 
-  const submitAuctionReport = async () => {
-    if (!reportReason.trim()) {
-      setReportMessage(t("reportReasonRequired", "Please describe the issue."));
-      return;
-    }
-    try {
-      setReportLoading(true); setReportMessage("");
-      await api.post("/Auction/report", { auctionId: auction.id, reason: reportReason.trim() });
-      setReportSuccess(true);
-      setReportReason("");
-      setTimeout(() => { setReportSuccess(false); setReportPopup(false); }, 2000);
-    } catch (err) {
-      setReportMessage(err?.response?.data?.message || err?.message || t("reportFailed", "Failed to submit report."));
-    } finally { setReportLoading(false); }
-  };
-
   const avgRating = sellerReviews.length
     ? (sellerReviews.reduce((s, r) => s + r.sellerRate, 0) / sellerReviews.length).toFixed(1)
     : "—";
@@ -661,6 +721,25 @@ const openSellerPopup = () => {
     </div>
   );
 
+  // ── shared popup textarea style
+  const textareaStyle = {
+    width: "100%", minHeight: 110, border: `1px solid ${D.inputBorder}`,
+    borderRadius: 12, padding: 12, resize: "vertical", outline: "none",
+    background: D.inputBg, color: D.inputColor, fontSize: 14,
+    fontFamily: "inherit", fontWeight: 600,
+  };
+
+  const checkRowStyle = {
+    display: "flex", alignItems: "center", gap: 10,
+    fontWeight: 800, color: D.checkRow, cursor: "pointer",
+  };
+
+  const uploadBoxStyle = {
+    border: `2px dashed ${D.uploadBorder}`, borderRadius: 14, padding: "14px 18px",
+    cursor: "pointer", display: "flex", justifyContent: "space-between",
+    alignItems: "center", color: "#023E8A", fontWeight: 900,
+  };
+
   return (
     <div dir={isArabic ? "rtl" : "ltr"} style={{
       minHeight: "100vh", background: D.bg, padding: "34px 18px 70px",
@@ -675,10 +754,7 @@ const openSellerPopup = () => {
         .auction-thumb{width:110px;height:78px;border-radius:10px;border:2px solid transparent;overflow:hidden;padding:0;cursor:pointer;background:${D.metaItem};flex:0 0 auto;}
         .auction-thumb.active{border-color:#023E8A;}
         .auction-thumb img{width:100%;height:100%;object-fit:cover;}
-
-        /* ↓ CHANGED: seller row — NO hover effect */
         .auction-seller-row{display:flex;align-items:center;gap:12px;margin-top:16px;padding:12px;border-radius:14px;cursor:pointer;}
-
         .sp-follow-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:none;border-radius:10px;font-size:13px;font-weight:900;padding:10px 14px;cursor:pointer;transition:opacity 0.2s,transform 0.15s;white-space:nowrap;background:#023E8A;color:#fff;}
         .sp-follow-btn--active{background:${dark ? "#2d1010" : "#fee2e2"} !important;color:${dark ? "#f87171" : "#b91c1c"} !important;}
         .sp-follow-btn:hover:not(:disabled){opacity:0.88;transform:translateY(-1px);}
@@ -693,34 +769,10 @@ const openSellerPopup = () => {
         .sp-popup-submit:disabled{opacity:0.65;cursor:not-allowed;}
         .sp-chip{display:inline-flex;align-items:center;gap:5px;background:${D.chipBg};color:${D.chipColor};border-radius:999px;padding:4px 10px;font-size:11px;font-weight:700;}
         .sp-verified-badge{position:absolute;bottom:-4px;right:-4px;width:24px;height:24px;border-radius:50%;background:${D.card};display:flex;align-items:center;justify-content:center;font-size:16px;color:#16a34a;}
-        .report-popup-textarea{width:100%;min-height:100px;border-radius:10px;border:1px solid ${D.inputBorder};padding:10px 14px;font-size:14px;font-weight:600;outline:none;resize:vertical;font-family:inherit;background:${D.textarea};color:${D.inputColor};margin-bottom:4px;}
-        .report-popup-textarea:focus{border-color:#023E8A;}
-
-        /* ↓ CHANGED: fav star button on image */
-        .auction-fav-star-btn {
-          position: absolute;
-          top: 14px;
-          right: 14px;
-          width: 40px;
-          height: 40px;
-          border-radius: 50%;
-          border: none;
-          background: rgba(255,255,255,0.9);
-          color: #d97706;
-          font-size: 18px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          z-index: 4;
-          backdrop-filter: blur(4px);
-          box-shadow: 0 2px 10px rgba(0,0,0,0.18);
-          transition: background 0.15s, transform 0.15s;
-        }
-        .auction-fav-star-btn:hover { background: #fef3c7; transform: scale(1.08); }
-        .auction-fav-star-btn--active { background: #fef3c7 !important; }
-        .auction-fav-star-btn:disabled { opacity: 0.55; cursor: not-allowed; }
-
+        .auction-fav-star-btn{position:absolute;top:14px;right:14px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,0.9);color:#d97706;font-size:18px;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:4;backdrop-filter:blur(4px);box-shadow:0 2px 10px rgba(0,0,0,0.18);transition:background 0.15s,transform 0.15s;}
+        .auction-fav-star-btn:hover{background:#fef3c7;transform:scale(1.08);}
+        .auction-fav-star-btn--active{background:#fef3c7 !important;}
+        .auction-fav-star-btn:disabled{opacity:0.55;cursor:not-allowed;}
         @media(max-width:900px){
           .auction-meta-grid-inner{grid-template-columns:repeat(2,minmax(0,1fr)) !important;}
           .auction-action-btn{width:100% !important;}
@@ -751,14 +803,11 @@ const openSellerPopup = () => {
 
         {/* Images */}
         <div style={{ background: D.card, border: `1px solid ${D.border}`, borderRadius: 20, overflow: "hidden", marginBottom: 18 }}>
-          {/* ↓ CHANGED: added position relative wrapper + fav star button */}
           <div className="auction-main-image" style={{ height: 500, background: D.metaItem, position: "relative" }}>
             <img src={selectedImage || auction.mainImage} alt={auction.title} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
             <span style={{ position: "absolute", left: 18, bottom: 18, background: "rgba(0,0,0,0.78)", color: "#fff", padding: "8px 14px", borderRadius: 999, fontSize: 13, fontWeight: 900 }}>
               <i className="fa-regular fa-image"></i> {auction.images.length}
             </span>
-
-            {/* ↓ CHANGED: star fav button top-right of main image */}
             <button
               type="button"
               className={`auction-fav-star-btn ${isFav ? "auction-fav-star-btn--active" : ""}`}
@@ -836,7 +885,7 @@ const openSellerPopup = () => {
             </>
           ) : null}
 
-          {/* ↓ CHANGED: seller row — cursor pointer but NO hover background effect */}
+          {/* Seller row */}
           <div
             className="auction-seller-row"
             role="button"
@@ -879,7 +928,7 @@ const openSellerPopup = () => {
             <SecondaryBtn onClick={openProxyFlow} disabled={actionLoading} dark={dark}>
               {actionLoading ? t("loading", "Loading...") : t("proxyBid", "Proxy Bid")}
             </SecondaryBtn>
-            <DangerBtn disabled={actionLoading} dark={dark} onClick={() => { setReportPopup(true); setReportMessage(""); setReportSuccess(false); setReportReason(""); }}>
+            <DangerBtn disabled={actionLoading} dark={dark} onClick={openReportPopup}>
               {t("report", "Report")}
             </DangerBtn>
             {actionMessage ? <PopupError>{actionMessage}</PopupError> : null}
@@ -887,7 +936,7 @@ const openSellerPopup = () => {
         </div>
       </div>
 
-      {/* Deposit Popup */}
+      {/* ── DEPOSIT POPUP ── */}
       {depositPopup && (
         <PopupOverlay onClick={closeAllPopups}>
           <PopupBox D={D}>
@@ -906,7 +955,7 @@ const openSellerPopup = () => {
         </PopupOverlay>
       )}
 
-      {/* Processing Popup */}
+      {/* ── PROCESSING POPUP ── */}
       {processingPopup && (
         <PopupOverlay onClick={null}>
           <PopupBox D={D}>
@@ -916,7 +965,7 @@ const openSellerPopup = () => {
         </PopupOverlay>
       )}
 
-      {/* Success Popup */}
+      {/* ── SUCCESS POPUP ── */}
       {successPopup && (
         <PopupOverlay onClick={closeAllPopups}>
           <PopupBox D={D}>
@@ -927,7 +976,7 @@ const openSellerPopup = () => {
         </PopupOverlay>
       )}
 
-      {/* Bid Popup */}
+      {/* ── BID POPUP ── */}
       {bidPopup && (
         <PopupOverlay onClick={closeAllPopups}>
           <PopupBox D={D}>
@@ -942,7 +991,7 @@ const openSellerPopup = () => {
         </PopupOverlay>
       )}
 
-      {/* Proxy Popup */}
+      {/* ── PROXY POPUP ── */}
       {proxyPopup && (
         <PopupOverlay onClick={closeAllPopups}>
           <PopupBox D={D}>
@@ -964,39 +1013,175 @@ const openSellerPopup = () => {
         </PopupOverlay>
       )}
 
-      {/* Report Popup */}
-      {reportPopup && (
+      {/* ══════════════════════════════════════════════════════════════
+          DISPUTE / REPORT POPUPS  — mirrors Order.jsx exactly
+      ══════════════════════════════════════════════════════════════ */}
+
+      {/* Step 1 — choose reasons */}
+      {reportPopup && !reportSuccess && reportStep === 1 && (
         <PopupOverlay onClick={closeReportPopup}>
-          <PopupBox D={D}>
+          <PopupBox D={D} onClick={(e) => e.stopPropagation()}>
             <PopupClose onClick={closeReportPopup} isArabic={isArabic} />
-            {reportSuccess ? (
-              <>
-                <p style={{ textAlign: "center", fontWeight: 900, color: "#023E8A" }}>{t("reportSubmitted", "Report submitted successfully.")}</p>
-                <div className="auction-success-icon"><i className="fa-solid fa-check"></i></div>
-              </>
-            ) : (
-              <>
-                <PopupTitle D={D}>{t("reportAuction", "Report Auction")}</PopupTitle>
-                <PopupText D={D}>{t("reportReason", "Describe the issue with this auction:")}</PopupText>
-                <textarea
-                  className="report-popup-textarea"
-                  placeholder={t("writeHere", "Write here...")}
-                  value={reportReason}
-                  maxLength={500}
-                  onChange={(e) => setReportReason(e.target.value)}
-                />
-                <div style={{ textAlign: "end", color: D.textSoft, fontSize: 12, marginBottom: 10 }}>{reportReason.length}/500</div>
-                {reportMessage ? <PopupError>{reportMessage}</PopupError> : null}
-                <PrimaryBtn onClick={submitAuctionReport} disabled={reportLoading}>
-                  {reportLoading ? t("sending", "Sending...") : t("sendReport", "Send the report")}
-                </PrimaryBtn>
-              </>
-            )}
+            <PopupTitle D={D}>{t("whatIsTheProblem", "What is the problem?")}</PopupTitle>
+
+            <div style={{ display: "grid", gap: 14, marginBottom: 18 }}>
+              {Object.values(disputeReasons).map((reason) => (
+                <label key={reason} style={checkRowStyle}>
+                  <input
+                    type="checkbox"
+                    checked={reportReasons.includes(reason)}
+                    onChange={() => toggleReason(reason)}
+                  />
+                  <span>{reason}</span>
+                </label>
+              ))}
+            </div>
+
+            <PrimaryBtn onClick={() => setReportStep(2)}>
+              {t("next", "Next")}
+            </PrimaryBtn>
           </PopupBox>
         </PopupOverlay>
       )}
 
-      {/* Seller Profile Popup */}
+      {/* Step 2 — description + evidence + solution */}
+      {reportPopup && !reportSuccess && reportStep === 2 && (
+        <PopupOverlay onClick={closeReportPopup}>
+          <PopupBox D={D} style={{ width: "min(100%, 580px)" }} onClick={(e) => e.stopPropagation()}>
+            <PopupClose onClick={closeReportPopup} isArabic={isArabic} />
+            <PopupTitle D={D}>{t("disputeForm", "Dispute Form")}</PopupTitle>
+
+            <div style={{ display: "grid", gap: 16 }}>
+              {/* Description */}
+              <div>
+                <label style={{ display: "block", fontWeight: 900, color: D.text, marginBottom: 6 }}>
+                  {t("explainProblem", "Explain the problem")}
+                </label>
+                <textarea
+                  style={textareaStyle}
+                  value={reportText}
+                  onChange={(e) => setReportText(e.target.value)}
+                  maxLength={500}
+                  placeholder={t("writeHere", "Write here...")}
+                />
+                <div style={{ textAlign: "end", color: D.textSoft, fontSize: 13 }}>{reportText.length}/500</div>
+              </div>
+
+              {/* Evidence upload */}
+              <div>
+                <label style={{ display: "block", fontWeight: 900, color: D.text, marginBottom: 6 }}>
+                  {t("evidenceUpload", "Evidence Upload")}
+                </label>
+                <div style={uploadBoxStyle} onClick={() => fileInputRef.current?.click()}>
+                  <span>{t("addImages", "Add Images")}</span>
+                  <span style={{ fontSize: 22, lineHeight: 1 }}>+</span>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={handleUploadImages}
+                />
+                {reportImages.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
+                    {reportImages.map((img, index) => (
+                      <div key={index} style={{ position: "relative" }}>
+                        <img src={img.preview} alt={img.name}
+                          style={{ width: 80, height: 80, borderRadius: 10, objectFit: "cover", border: `1px solid ${D.border}` }} />
+                        <button
+                          type="button"
+                          onClick={() => removeUploadedImage(index)}
+                          style={{
+                            position: "absolute", top: -8, right: -8,
+                            border: "none", background: "#dc2626", color: "white",
+                            borderRadius: "50%", width: 24, height: 24, cursor: "pointer",
+                            fontWeight: 900, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center",
+                          }}
+                        >×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Solution */}
+              <div>
+                <label style={{ display: "block", fontWeight: 900, color: D.text, marginBottom: 10 }}>
+                  {t("requiredSolution", "Required solution")}
+                </label>
+                <label style={{ ...checkRowStyle, marginBottom: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={reportSolution === "full"}
+                    onChange={() => setReportSolution(reportSolution === "full" ? "" : "full")}
+                  />
+                  <span>{t("fullRefundReturnItem", "Full refund (return of item).")}</span>
+                </label>
+                <label style={checkRowStyle}>
+                  <input
+                    type="checkbox"
+                    checked={reportSolution === "partial"}
+                    onChange={() => setReportSolution(reportSolution === "partial" ? "" : "partial")}
+                  />
+                  <span>{t("partialRefundKeepItem", "Partial refund (keep of item).")}</span>
+                </label>
+              </div>
+
+              {reportMessage ? <PopupError>{reportMessage}</PopupError> : null}
+
+              <PrimaryBtn onClick={handleSendReport} disabled={reportLoading} style={{ width: "100%", margin: 0 }}>
+                {reportLoading
+                  ? t("sending", "Sending...")
+                  : t("sendReport", "Send the report")}
+              </PrimaryBtn>
+            </div>
+          </PopupBox>
+        </PopupOverlay>
+      )}
+
+      {/* Success — dispute created */}
+      {reportPopup && reportSuccess && (
+        <PopupOverlay onClick={closeReportPopup}>
+          <PopupBox D={D} onClick={(e) => e.stopPropagation()}>
+            <div style={{ textAlign: "center", padding: "8px 0 4px" }}>
+              <div className="auction-success-icon">✓</div>
+              <p style={{ color: D.text, fontWeight: 800, lineHeight: 1.7, margin: "12px 0 18px" }}>
+                {t("reportReceivedText", "The report has been received, and the seller is being investigated.")}
+                <br />
+                <span style={{ color: "#16a34a", fontWeight: 900 }}>
+                  {t("yourMoneyIsSafe", "Your money is safe.")}
+                </span>
+              </p>
+              <div style={{ display: "flex", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={closeReportPopup}
+                  style={{
+                    padding: "12px 20px", borderRadius: 10, fontWeight: 900, cursor: "pointer",
+                    border: "none", background: dark ? "#1e293b" : "#e8f1ff", color: "#023E8A",
+                  }}
+                >
+                  {t("backToHome", "Back to home")}
+                </button>
+                <Link
+                  to={`/dispute-tracking?disputeId=${createdDisputeId}`}
+                  state={{ disputeId: createdDisputeId }}
+                  style={{
+                    padding: "12px 20px", borderRadius: 10, fontWeight: 900, textDecoration: "none",
+                    background: "#023E8A", color: "#fff", display: "inline-flex", alignItems: "center",
+                  }}
+                >
+                  {t("trackStatus", "Track Status")}
+                </Link>
+              </div>
+            </div>
+          </PopupBox>
+        </PopupOverlay>
+      )}
+
+      {/* ── SELLER PROFILE POPUP ── */}
       {sellerPopup && (
         <div onClick={closeSellerPopup} style={{
           position: "fixed", inset: 0, background: D.overlay,
@@ -1063,7 +1248,6 @@ const openSellerPopup = () => {
                   </div>
                 </div>
 
-                {/* Stats bar */}
                 <div style={{ display: "flex", border: `1px solid ${D.statsBorder}`, borderRadius: 14, overflow: "hidden", marginBottom: 20, background: D.statsBg }}>
                   {[
                     { value: sellerData.followers, label: t("followers", "Followers") },
@@ -1126,7 +1310,7 @@ const openSellerPopup = () => {
         </div>
       )}
 
-      {/* Add Review Sub-popup */}
+      {/* ── ADD REVIEW SUB-POPUP ── */}
       {reviewPopup && (
         <div onClick={() => { if (!reviewLoading) setReviewPopup(false); }} style={{
           position: "fixed", inset: 0, background: D.overlay,

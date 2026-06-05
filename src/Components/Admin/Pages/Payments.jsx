@@ -12,8 +12,6 @@ import {
   getFailedTransactions,
   getSuccessfulPaymentsTable,
   getFailedPaymentsTable,
-  fullRefund,
-  partialRefund,
 } from "../../../API/admindashboard";
 
 /* ══════════════════════════════════════════════════════════════════
@@ -50,6 +48,24 @@ const getNumber = (res) => {
   return 0;
 };
 
+const formatDate = (raw) => {
+  if (!raw || raw === "-") return "-";
+  try {
+    const d = new Date(raw);
+    if (isNaN(d.getTime())) return raw;
+    return d.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }) + " " + d.toLocaleTimeString("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return raw;
+  }
+};
+
 const normalizePaymentRow = (item) => ({
   id:        item?.id           ?? item?.transactionId  ?? item?.disputeId   ?? item?.Id           ?? "-",
   disputeId: item?.disputeId    ?? item?.DisputeId      ?? item?.id           ?? null,
@@ -61,8 +77,10 @@ const normalizePaymentRow = (item) => ({
              ),
   method:    item?.method       ?? item?.paymentMethod   ?? item?.type
                                 ?? item?.PaymentMethod   ?? item?.Method      ?? "-",
-  date:      item?.date         ?? item?.createdAt       ?? item?.transactionDate
-                                ?? item?.Date            ?? item?.CreatedAt   ?? "-",
+  date:      formatDate(
+               item?.date         ?? item?.createdAt       ?? item?.transactionDate
+                                  ?? item?.Date            ?? item?.CreatedAt   ?? "-"
+             ),
   reason:    item?.reason       ?? item?.failureReason   ?? item?.notes
                                 ?? item?.Reason          ?? item?.FailureReason ?? "-",
   status:    String(item?.status ?? item?.Status ?? "").toLowerCase(),
@@ -70,12 +88,12 @@ const normalizePaymentRow = (item) => ({
 });
 
 /* ══════════════════════════════════════════════════════════════════
-   GRAPH — dynamic 12-month wave (same pattern as Users / Sellers / Auctions)
+   GRAPH — dynamic 12-month wave
 ══════════════════════════════════════════════════════════════════ */
 const buildMonthlyData = (successful, failed, monthLabels) => {
   const seed = (n, i) => {
     const x = Math.sin(n * 9301 + i * 49297 + 233) * 10000;
-    return (x - Math.floor(x)) * 2 - 1; // −1 … +1
+    return (x - Math.floor(x)) * 2 - 1;
   };
   return monthLabels.map((month, i) => {
     const sBase = Math.max(1, successful);
@@ -104,7 +122,7 @@ function useChartJS() {
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   LINE CHART — full 12 months, goes up and down like Sellers/Users
+   LINE CHART
 ══════════════════════════════════════════════════════════════════ */
 function LineChartJS({ data, realValues, darkMode }) {
   const canvasRef = useRef(null);
@@ -156,7 +174,6 @@ function LineChartJS({ data, realValues, darkMode }) {
             borderWidth: 1, padding: 12, cornerRadius: 10,
             callbacks: {
               label: (ctx) => {
-                // Always show real API value in tooltip
                 const real = ctx.datasetIndex === 0
                   ? (realValues?.successful ?? ctx.parsed.y)
                   : (realValues?.failed     ?? ctx.parsed.y);
@@ -193,7 +210,6 @@ function LineChartJS({ data, realValues, darkMode }) {
 }
 
 function ResponsivePieChart({ data, colors, tooltipStyle, darkMode }) {
-  const total = data.reduce((s, i) => s + i.value, 0);
   return (
     <PieChart width={220} height={220}>
       <Pie
@@ -209,10 +225,13 @@ function ResponsivePieChart({ data, colors, tooltipStyle, darkMode }) {
       </Pie>
       <Tooltip
         contentStyle={tooltipStyle}
-        formatter={(v) => [
-          `$${Number(v).toLocaleString()} (${total ? ((v / total) * 100).toFixed(1) : 0}%)`,
-          "",
-        ]}
+        formatter={(v, _name, entry) => {
+          const total = data.reduce((s, i) => s + i.value, 0);
+          return [
+            `$${Number(v).toLocaleString()} (${total ? ((v / total) * 100).toFixed(1) : 0}%)`,
+            "",
+          ];
+        }}
         labelStyle={{ fontWeight: 700, color: darkMode ? "#ffffff" : "#111111" }}
         itemStyle={{ color: darkMode ? "#ffffff" : "#111111" }}
       />
@@ -253,7 +272,9 @@ function ChartsSkeleton() {
     </div>
   );
 }
-function TableSkeleton({ cols = 5, rows = 5 }) {
+
+/* ── Table skeleton ── */
+function TableSkeleton({ cols = 5, rows = 6 }) {
   return (
     <>
       {Array.from({ length: rows }).map((_, r) => (
@@ -261,9 +282,9 @@ function TableSkeleton({ cols = 5, rows = 5 }) {
           {Array.from({ length: cols }).map((__, c) => (
             <td key={c}>
               <SkeletonBlock
-                width={c === 0 ? 30 : c === cols - 1 ? 120 : "80%"}
-                height={c === cols - 1 ? 32 : 14}
-                radius={c === cols - 1 ? 8 : 6}
+                width={c === 0 ? 40 : c === cols - 1 ? 82 : "85%"}
+                height={14}
+                radius={7}
               />
             </td>
           ))}
@@ -299,80 +320,28 @@ const CoinsIcon = () => (
 );
 
 /* ══════════════════════════════════════════════════════════════════
-   REFUND MODALS
+   PAGINATION
 ══════════════════════════════════════════════════════════════════ */
-function FullRefundModal({ row, onClose, onConfirm, loading, t }) {
+function Pagination({ page, totalPages, loading, onPrev, onNext, t }) {
   return (
-    <div className="confirm-overlay">
-      <div className="confirm-modal">
-        <h3>{t("fullRefund", "Full Refund")}</h3>
-        <p>
-          {t("confirmFullRefund", "Issue a full refund for transaction")}
-          {" "}<strong style={{ color: "#4fa3e0" }}>#{row?.id}</strong>
-          {" "}{t("forUser", "for user")}{" "}<strong>{row?.user}</strong>?
-        </p>
-        <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 6 }}>
-          {t("amount", "Amount")}: <strong style={{ color: "#22c55e" }}>${Number(row?.amount).toLocaleString()}</strong>
-        </p>
-        <div className="confirm-actions">
-          <button className="btn cancel" onClick={onClose} disabled={loading}>{t("cancel", "Cancel")}</button>
-          <button className="btn success" onClick={onConfirm} disabled={loading}>
-            {loading ? t("loading", "Loading...") : t("confirm", "Confirm")}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function PartialRefundModal({ row, onClose, onConfirm, loading, t }) {
-  const [amount, setAmount] = useState("");
-  const max = Number(row?.amount || 0);
-
-  const handleConfirm = () => {
-    const val = Number(amount);
-    if (!val || val <= 0) { alert(t("enterValidAmount", "Please enter a valid amount.")); return; }
-    if (val > max) { alert(`${t("maxRefund", "Max refundable amount is")} $${max}`); return; }
-    onConfirm(val);
-  };
-
-  return (
-    <div className="confirm-overlay">
-      <div className="confirm-modal">
-        <h3>{t("partialRefund", "Partial Refund")}</h3>
-        <p>
-          {t("transactionId", "Transaction")} <strong style={{ color: "#4fa3e0" }}>#{row?.id}</strong>
-          {" — "}{t("user", "User")}: <strong>{row?.user}</strong>
-        </p>
-        <p style={{ color: "#94a3b8", fontSize: 13, marginTop: 4 }}>
-          {t("originalAmount", "Original amount")}: <strong style={{ color: "#f59e0b" }}>${max.toLocaleString()}</strong>
-        </p>
-        <div style={{ marginTop: 16 }}>
-          <label style={{ color: "#94a3b8", fontSize: 13, display: "block", marginBottom: 6 }}>
-            {t("refundAmount", "Refund Amount")} ($)
-          </label>
-          <input
-            type="number"
-            min="1"
-            max={max}
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder={`1 – ${max}`}
-            style={{
-              width: "100%", padding: "8px 12px", borderRadius: 8,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(255,255,255,0.06)", color: "inherit",
-              fontSize: 15, outline: "none",
-            }}
-          />
-        </div>
-        <div className="confirm-actions" style={{ marginTop: 18 }}>
-          <button className="btn cancel" onClick={onClose} disabled={loading}>{t("cancel", "Cancel")}</button>
-          <button className="btn success" onClick={handleConfirm} disabled={loading}>
-            {loading ? t("loading", "Loading...") : t("confirm", "Confirm")}
-          </button>
-        </div>
-      </div>
+    <div className="sl-pagination">
+      <button
+        className="action-btn view"
+        disabled={page <= 1 || loading}
+        onClick={onPrev}
+      >
+        {t("previous", "Previous")}
+      </button>
+      <strong>
+        {t("page", "Page")} {page} {t("of", "of")} {totalPages}
+      </strong>
+      <button
+        className="action-btn view"
+        disabled={page >= totalPages || loading}
+        onClick={onNext}
+      >
+        {t("next", "Next")}
+      </button>
     </div>
   );
 }
@@ -380,63 +349,74 @@ function PartialRefundModal({ row, onClose, onConfirm, loading, t }) {
 /* ══════════════════════════════════════════════════════════════════
    PAYMENTS TABLE
 ══════════════════════════════════════════════════════════════════ */
-function PaymentsTable({ data, success, loading, onFullRefund, onPartialRefund, t, isArabic }) {
-  const cols = success ? 6 : 7;
+function PaymentsTable({ data, success, loading, t, isArabic, darkMode }) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 30;
+
+  useEffect(() => { setCurrentPage(1); }, [data]);
+
+  const totalItems  = data.length;
+  const totalPages  = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  const startIndex  = (currentPage - 1) * itemsPerPage;
+  const currentData = data.slice(startIndex, startIndex + itemsPerPage);
+
+  const cols = success ? 5 : 6;
+
   return (
-    <div className="users-table-container">
-      <table className="users-table pay-table" style={{ direction: isArabic ? "rtl" : "ltr" }}>
+    <div className="sl-table-wrap" style={{ direction: isArabic ? "rtl" : "ltr" }}>
+      <table className="sl-table">
         <thead>
           <tr>
-            <th className="pay-th-num">#</th>
-            <th>{t("user", "User")}</th>
+            {/* ✅ FIX: nowrap + minWidth so the number never line-breaks */}
+            <th style={{ whiteSpace: "nowrap", minWidth: 48, width: 48 }}>#</th>
+            <th>{t("user",   "User")}</th>
             <th>{t("amount", "Amount")}</th>
             <th>{t("method", "Method")}</th>
-            <th>{t("date", "Date")}</th>
+            <th>{t("date",   "Date")}</th>
             {!success && <th>{t("reason", "Reason")}</th>}
-            <th>{t("actions", "Actions")}</th>
           </tr>
         </thead>
         <tbody>
           {loading ? (
-            <TableSkeleton cols={cols} rows={5} />
-          ) : data.length === 0 ? (
+            <TableSkeleton cols={cols} rows={15} />
+          ) : currentData.length === 0 ? (
             <tr>
-              <td colSpan={cols} style={{ textAlign: "center", padding: "24px 0", color: "#94a3b8" }}>
+              <td colSpan={cols} className="sl-table-empty">
                 {t("noPayments", "No payments found.")}
               </td>
             </tr>
           ) : (
-            data.map((p, i) => (
-              <tr key={`${p.id}-${i}`}>
-                <td className="pay-td-num">{i + 1}</td>
-                <td>{p.user}</td>
-                <td>${Number(p.amount).toLocaleString()}</td>
-                <td>{p.method}</td>
-                <td className="pay-td-date">{p.date}</td>
-                {!success && <td className="pay-td-reason">{p.reason}</td>}
-                <td>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    <button
-                      className="action-btn activate"
-                      style={{ fontSize: 12, padding: "4px 10px" }}
-                      onClick={() => onFullRefund(p)}
-                    >
-                      {t("fullRefund", "Full Refund")}
-                    </button>
-                    <button
-                      className="action-btn view"
-                      style={{ fontSize: 12, padding: "4px 10px" }}
-                      onClick={() => onPartialRefund(p)}
-                    >
-                      {t("partialRefund", "Partial Refund")}
-                    </button>
-                  </div>
+            currentData.map((p, i) => (
+              <tr key={`${p.id}-${startIndex + i}`}>
+                {/* ✅ FIX: nowrap + minWidth on the data cell too */}
+                <td style={{ whiteSpace: "nowrap", minWidth: 48, width: 48 }}>
+                  <strong style={{ color: "#4fa3e0" }}>{startIndex + i + 1}</strong>
                 </td>
+                <td>{p.user}</td>
+                <td>
+                  <span className="status active" style={{ fontWeight: 600 }}>
+                    ${Number(p.amount).toLocaleString()}
+                  </span>
+                </td>
+                <td>{p.method}</td>
+                <td style={{ fontSize: 13, color: "#94a3b8" }}>{p.date}</td>
+                {!success && (
+                  <td style={{ fontSize: 13, color: "#f87171" }}>{p.reason}</td>
+                )}
               </tr>
             ))
           )}
         </tbody>
       </table>
+
+      <Pagination
+        page={currentPage}
+        totalPages={totalPages}
+        loading={loading}
+        onPrev={() => setCurrentPage((p) => Math.max(1, p - 1))}
+        onNext={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+        t={t}
+      />
     </div>
   );
 }
@@ -453,8 +433,6 @@ export default function Payments() {
 
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(currentYear);
-  const years = [];
-  for (let y = 2025; y <= currentYear; y++) years.push(y);
 
   const [theme, setTheme] = useState(() => getSavedTheme());
   const darkModeActive = theme === "dark";
@@ -462,16 +440,12 @@ export default function Payments() {
 
   const [filter, setFilter] = useState("7");
 
-  const [stats, setStats]             = useState({ total: 0, successful: 0, failed: 0 });
+  const [stats, setStats]               = useState({ total: 0, successful: 0, failed: 0 });
   const [statsLoading, setStatsLoading] = useState(true);
 
-  const [successRows,  setSuccessRows]  = useState([]);
-  const [failedRows,   setFailedRows]   = useState([]);
+  const [successRows, setSuccessRows]   = useState([]);
+  const [failedRows,  setFailedRows]    = useState([]);
   const [tableLoading, setTableLoading] = useState(true);
-
-  const [fullRefundRow,    setFullRefundRow]    = useState(null);
-  const [partialRefundRow, setPartialRefundRow] = useState(null);
-  const [refundLoading,    setRefundLoading]    = useState(false);
 
   useEffect(() => { applyTheme(theme); }, [theme]);
   useEffect(() => { document.title = `Admin | Payments ${selectedYear}`; }, [selectedYear]);
@@ -500,14 +474,12 @@ export default function Payments() {
     navigate("/login", { replace: true });
   }
 
-  /* ── month labels — translated ── */
   const monthsKeys = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
   const monthLabels = useMemo(
     () => monthsKeys.map((m) => t(m, m.charAt(0).toUpperCase() + m.slice(1))),
     [i18n.language] // eslint-disable-line
   );
 
-  /* ── load stats — each endpoint silently wrapped ── */
   const loadStats = async () => {
     setStatsLoading(true);
     try {
@@ -526,7 +498,6 @@ export default function Payments() {
     }
   };
 
-  /* ── load tables ── */
   const loadTables = async (days) => {
     setTableLoading(true);
     try {
@@ -563,48 +534,6 @@ export default function Payments() {
   useEffect(() => { loadStats(); loadTables("7"); }, []); // eslint-disable-line
   useEffect(() => { loadTables(filter); }, [filter]);     // eslint-disable-line
 
-  /* ── refund handlers ── */
-  const handleFullRefund = async () => {
-    if (!fullRefundRow) return;
-    const disputeId = fullRefundRow.disputeId ?? fullRefundRow.id;
-    if (disputeId == null || disputeId === "-") {
-      alert(t("missingDisputeId", "Dispute ID not found for this transaction."));
-      return;
-    }
-    try {
-      setRefundLoading(true);
-      await fullRefund(disputeId);
-      alert(t("fullRefundSuccess", "Full refund issued successfully."));
-      setFullRefundRow(null);
-      loadTables(filter);
-    } catch (err) {
-      alert(err?.response?.data?.message || err?.message || t("refundFailed", "Refund failed."));
-    } finally {
-      setRefundLoading(false);
-    }
-  };
-
-  const handlePartialRefund = async (amount) => {
-    if (!partialRefundRow) return;
-    const disputeId = partialRefundRow.disputeId ?? partialRefundRow.id;
-    if (disputeId == null || disputeId === "-") {
-      alert(t("missingDisputeId", "Dispute ID not found for this transaction."));
-      return;
-    }
-    try {
-      setRefundLoading(true);
-      await partialRefund(disputeId, amount);
-      alert(t("partialRefundSuccess", "Partial refund issued successfully."));
-      setPartialRefundRow(null);
-      loadTables(filter);
-    } catch (err) {
-      alert(err?.response?.data?.message || err?.message || t("refundFailed", "Refund failed."));
-    } finally {
-      setRefundLoading(false);
-    }
-  };
-
-  /* ── Chart data — full 12-month wave ── */
   const paymentsChartData = useMemo(
     () => buildMonthlyData(stats.successful, stats.failed, monthLabels),
     [stats.successful, stats.failed, i18n.language] // eslint-disable-line
@@ -623,7 +552,7 @@ export default function Payments() {
     [stats.successful, stats.failed, i18n.language] // eslint-disable-line
   );
 
-  const donutColors = useMemo(() => ["#22c55e", "#ef4444"], []);
+  const donutColors  = useMemo(() => ["#22c55e", "#ef4444"], []);
 
   const tooltipStyle = {
     backgroundColor: darkModeActive ? "#0f172a" : "#ffffff",
@@ -633,9 +562,6 @@ export default function Payments() {
     fontWeight: 600,
   };
 
-  /* ══════════════════════════════════════════════════════════════
-     RENDER
-  ══════════════════════════════════════════════════════════════ */
   return (
     <div className={`admin-layout ${darkModeActive ? "dark-admin" : ""}`} dir={isArabic ? "rtl" : "ltr"}>
 
@@ -739,9 +665,12 @@ export default function Payments() {
           {/* Successful Payments */}
           <h3 className="section-title">{t("successfulPayments", "Successful Payments")}</h3>
           <PaymentsTable
-            data={successRows} success loading={tableLoading}
-            onFullRefund={setFullRefundRow} onPartialRefund={setPartialRefundRow}
-            t={t} isArabic={isArabic}
+            data={successRows}
+            success={true}
+            loading={tableLoading}
+            t={t}
+            isArabic={isArabic}
+            darkMode={darkModeActive}
           />
 
           <hr className="big-divider" />
@@ -749,28 +678,15 @@ export default function Payments() {
           {/* Failed Payments */}
           <h3 className="section-title">{t("failedPayments", "Failed Payments")}</h3>
           <PaymentsTable
-            data={failedRows} loading={tableLoading}
-            onFullRefund={setFullRefundRow} onPartialRefund={setPartialRefundRow}
-            t={t} isArabic={isArabic}
+            data={failedRows}
+            success={false}
+            loading={tableLoading}
+            t={t}
+            isArabic={isArabic}
+            darkMode={darkModeActive}
           />
         </div>
       </main>
-
-      {/* Full Refund Modal */}
-      {fullRefundRow && (
-        <FullRefundModal
-          row={fullRefundRow} loading={refundLoading}
-          onClose={() => setFullRefundRow(null)} onConfirm={handleFullRefund} t={t}
-        />
-      )}
-
-      {/* Partial Refund Modal */}
-      {partialRefundRow && (
-        <PartialRefundModal
-          row={partialRefundRow} loading={refundLoading}
-          onClose={() => setPartialRefundRow(null)} onConfirm={handlePartialRefund} t={t}
-        />
-      )}
     </div>
   );
 }

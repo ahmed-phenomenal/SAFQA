@@ -157,58 +157,87 @@ export default function SellerFollow() {
     load();
   }, [sellerId]);
 
-  // ── follow / unfollow ───────────────────────────────────────────────────────
-  const handleFollow = async () => {
-    if (!sellerId || followLoading) return;
-    try {
-      setFollowLoading(true);
-      if (isFollowing) {
-        await api.delete(`/User/Unfollow/${sellerId}`);
-        setIsFollowing(false);
-        setSeller((prev) => prev ? { ...prev, followers: Math.max(0, prev.followers - 1), isFollowing: false } : prev);
-      } else {
-        await api.post("/User/Follow", { sellerId: Number(sellerId) });
-        setIsFollowing(true);
-        setSeller((prev) => prev ? { ...prev, followers: prev.followers + 1, isFollowing: true } : prev);
-      }
-    } catch (err) {
-      alert(err?.response?.data?.message || err?.message || "Action failed.");
-    } finally { setFollowLoading(false); }
-  };
-
-  // ── submit review ───────────────────────────────────────────────────────────
-const handleSubmitReview = async () => {
-  if (!sellerRate)        { setReviewError(t("pleaseSelectSellerRate",   "Please select a rating.")); return; }
-  if (!reviewText.trim()) { setReviewError(t("pleaseWriteReview",        "Please write a review.")); return; }
-
+const handleFollow = async () => {
+  if (!sellerId || followLoading) return;
   try {
-    setReviewLoading(true);
-    setReviewError("");
-
-    await api.post("/Review/add", {
-      auctionId: Number(auctionId),
-      rating:    Number(sellerRate),
-      comment:   reviewText.trim(),
-    });
-
-    setReviewSuccess(true);
-    setSellerRate(0);
-    setDeliveryRate(0);
-    setReviewText("");
-
-    const res = await api.get(`/Review/${sellerId}`);
-    setReviews(normalizeReviews(res?.data));
-
-    setTimeout(() => {
-      setReviewSuccess(false);
-      setReviewPopup(false);
-    }, 1800);
+    setFollowLoading(true);
+    if (isFollowing) {
+      await api.delete(`/User/Unfollow/${sellerId}`);
+      setIsFollowing(false);
+      setSeller((prev) => prev ? { ...prev, followers: Math.max(0, prev.followers - 1), isFollowing: false } : prev);
+    } else {
+      try {
+        await api.post("/User/Follow", { sellerId: Number(sellerId) });
+      } catch (err) {
+        const msg = (err?.response?.data?.message || err?.message || "").toLowerCase();
+        // ── If already following, just sync the UI without alerting ──
+        if (msg.includes("already follow") || msg.includes("already following")) {
+          setIsFollowing(true);
+          setSeller((prev) => prev ? { ...prev, isFollowing: true } : prev);
+          return;
+        }
+        throw err; // re-throw real errors
+      }
+      setIsFollowing(true);
+      setSeller((prev) => prev ? { ...prev, followers: prev.followers + 1, isFollowing: true } : prev);
+    }
   } catch (err) {
-    setReviewError(err?.response?.data?.message || err?.response?.data?.error || err?.message || "Failed to submit review.");
+    alert(err?.response?.data?.message || err?.message || "Action failed.");
   } finally {
-    setReviewLoading(false);
+    setFollowLoading(false); 
   }
 };
+
+  // ── submit review ───────────────────────────────────────────────────────────
+  const handleSubmitReview = async () => {
+    if (!sellerRate)        { setReviewError(t("pleaseSelectSellerRate", "Please select a rating.")); return; }
+    if (!reviewText.trim()) { setReviewError(t("pleaseWriteReview",      "Please write a review.")); return; }
+
+    try {
+      setReviewLoading(true);
+      setReviewError("");
+
+      await api.post("/Review/add", {
+        auctionId: Number(auctionId),
+        rating:    Number(sellerRate),
+        comment:   reviewText.trim(),
+      });
+
+      setReviewSuccess(true);
+      setSellerRate(0);
+      setDeliveryRate(0);
+      setReviewText("");
+
+      const res = await api.get(`/Review/${sellerId}`);
+      setReviews(normalizeReviews(res?.data));
+
+      setTimeout(() => {
+        setReviewSuccess(false);
+        setReviewPopup(false);
+      }, 1800);
+    } catch (err) {
+      const raw = err?.response?.data?.message ||
+                  err?.response?.data?.error   ||
+                  err?.message || "";
+
+      const isNotWinner =
+        raw.toLowerCase().includes("not allowed")   ||
+        raw.toLowerCase().includes("not the winner")||
+        raw.toLowerCase().includes("winner")        ||
+        raw.toLowerCase().includes("unauthorized")  ||
+        raw.toLowerCase().includes("forbidden")     ||
+        String(err?.response?.status) === "403"     ||
+        String(err?.response?.status) === "401";
+
+      setReviewError(
+        isNotWinner
+          ? t("onlyWinnerCanReview", "Only the auction winner can leave a review for this auction.")
+          : raw || t("failedToSubmitReview", "Failed to submit review. Please try again.")
+      );
+    } finally {
+      setReviewLoading(false);
+    }
+  };
 
   const avgRating = reviews.length
     ? (reviews.reduce((s, r) => s + r.sellerRate, 0) / reviews.length).toFixed(1)
@@ -219,7 +248,6 @@ const handleSubmitReview = async () => {
     <div className="sp-page" dir={isArabic ? "rtl" : "ltr"}>
       <style>{css(isArabic)}</style>
 
-      {/* ── LOADING / ERROR ── */}
       {loadingSeller ? (
         <div className="sp-shell">
           <div className="sp-hero-skeleton">
@@ -241,7 +269,6 @@ const handleSubmitReview = async () => {
           <div className="sp-hero">
             <div className="sp-hero-bg" />
             <div className="sp-hero-body">
-              {/* avatar */}
               <div className="sp-avatar-wrap">
                 {seller.logo ? (
                   <img src={seller.logo} alt={seller.storeName} className="sp-avatar" />
@@ -257,13 +284,11 @@ const handleSubmitReview = async () => {
                 ) : null}
               </div>
 
-              {/* info */}
               <div className="sp-hero-info">
                 <h1 className="sp-store-name">{seller.storeName}</h1>
                 {seller.description ? (
                   <p className="sp-store-desc">{seller.description}</p>
                 ) : null}
-
                 <div className="sp-meta-chips">
                   {seller.country ? (
                     <span className="sp-chip">
@@ -283,7 +308,6 @@ const handleSubmitReview = async () => {
                 </div>
               </div>
 
-              {/* actions */}
               <div className="sp-hero-actions">
                 <button
                   className={`sp-follow-btn ${isFollowing ? "sp-follow-btn--active" : ""}`}
@@ -308,7 +332,6 @@ const handleSubmitReview = async () => {
               </div>
             </div>
 
-            {/* stats bar */}
             <div className="sp-stats-bar">
               <div className="sp-stat">
                 <strong>{seller.followers}</strong>
@@ -418,6 +441,11 @@ const handleSubmitReview = async () => {
                   <i className="fa-solid fa-star" /> {t("addAReview", "Add a Review")}
                 </h3>
 
+                {/* ── Winner-only notice ── */}
+                <div className="sp-winner-note">
+                  🏆 {t("onlyWinnerCanReviewNote", "Only the auction winner can submit a review.")}
+                </div>
+
                 <div className="sp-popup-field">
                   <label className="sp-popup-label">{t("sellerRate", "Seller Rate")}</label>
                   <StarRow value={sellerRate} onChange={setSellerRate} size={32} />
@@ -437,7 +465,9 @@ const handleSubmitReview = async () => {
                     maxLength={500}
                     onChange={(e) => setReviewText(e.target.value)}
                   />
-                  <div className="sp-popup-counter">{reviewText.trim().split(/\s+/).filter(Boolean).length} {t("words", "words")}</div>
+                  <div className="sp-popup-counter">
+                    {reviewText.trim().split(/\s+/).filter(Boolean).length} {t("words", "words")}
+                  </div>
                 </div>
 
                 {reviewError ? <p className="sp-popup-error">{reviewError}</p> : null}
@@ -459,7 +489,7 @@ const handleSubmitReview = async () => {
   );
 }
 
-// ── styles (unchanged) ────────────────────────────────────────────────────────
+// ── styles ────────────────────────────────────────────────────────────────────
 const css = (isArabic) => `
   .sp-page {
     min-height: 100vh;
@@ -502,7 +532,6 @@ const css = (isArabic) => `
     gap: 24px;
   }
 
-  /* ── HERO ── */
   .sp-hero {
     background: var(--card, #fff);
     border: 1px solid var(--border, #e5e7eb);
@@ -677,7 +706,16 @@ const css = (isArabic) => `
     font-size: 28px; cursor: pointer; line-height: 1;
   }
 
-  .sp-popup-title { margin: 0 0 20px; font-size: 20px; font-weight: 900; color: #023E8A; display: flex; align-items: center; gap: 10px; }
+  .sp-popup-title { margin: 0 0 14px; font-size: 20px; font-weight: 900; color: #023E8A; display: flex; align-items: center; gap: 10px; }
+
+  /* ── winner note ── */
+  .sp-winner-note {
+    display: flex; align-items: center; gap: 8px;
+    background: #fffbe6; color: #92400e;
+    border: 1px solid #fcd34d; border-radius: 10px;
+    padding: 10px 14px; margin-bottom: 18px;
+    font-size: 13px; font-weight: 700;
+  }
 
   .sp-popup-field { margin-bottom: 18px; display: flex; flex-direction: column; gap: 8px; }
 
@@ -695,7 +733,12 @@ const css = (isArabic) => `
 
   .sp-popup-textarea:focus { border-color: #023E8A; }
   .sp-popup-counter { font-size: 12px; color: var(--text-soft, #9ca3af); text-align: end; }
-  .sp-popup-error { color: #dc2626; font-size: 13px; font-weight: 800; margin: 0 0 12px; text-align: center; }
+  .sp-popup-error {
+    color: #dc2626; font-size: 13px; font-weight: 800;
+    margin: 0 0 12px; text-align: center;
+    background: #fff1f0; border: 1px solid #fca5a5;
+    border-radius: 8px; padding: 10px 12px;
+  }
 
   .sp-popup-submit {
     width: 100%; min-height: 50px; border: none; border-radius: 12px;
@@ -764,6 +807,7 @@ const css = (isArabic) => `
   [data-theme="dark"] .sp-sk { background: linear-gradient(90deg,#1c1c1c 25%,#2a2a2a 37%,#1c1c1c 63%); background-size:400% 100%; }
   [data-theme="dark"] .sp-store-name { color: #f5f5f5; }
   [data-theme="dark"] .sp-review-comment { border-left-color: #1a2744; }
+  [data-theme="dark"] .sp-winner-note { background: #2a1f00; color: #fcd34d; border-color: #78350f; }
 
   @media (max-width: 860px) {
     .sp-hero-body { grid-template-columns: auto 1fr; }

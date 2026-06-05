@@ -731,3 +731,108 @@
 [dir="rtl"] .pay-table .pay-th-num{text-align:center;}
 [dir="rtl"] .pay-table .pay-td-num{text-align:center;}
 
+/* ── Details Modal body scroll area ── */
+.admin-details-body {
+  padding: 0 20px 20px;
+  overflow-y: auto;
+  max-height: 60vh;
+}
+
+/* ── Meta rows ── */
+.admin-details-meta {
+  display: grid;
+  gap: 10px;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+}
+.admin-details-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.admin-details-label {
+  font-size: 13px;
+  min-width: 100px;
+  color: #64748b;          /* light mode */
+}
+.dark-admin .admin-details-label {
+  color: #94a3b8;          /* dark mode */
+}
+.admin-details-value {
+  font-size: 13px;
+  font-weight: 600;
+  word-break: break-word;
+  color: #1e293b;          /* light mode */
+}
+.dark-admin .admin-details-value {
+  color: #e2e8f0;          /* dark mode */
+}
+
+/* ── Evidence section title ── */
+.admin-details-evidence-title {
+  font-size: 14px;
+  color: #2563eb;          /* light mode */
+  margin-bottom: 10px;
+}
+.dark-admin .admin-details-evidence-title {
+  color: #4fa3e0;          /* dark mode */
+}
+.admin-details-no-evidence {
+  font-size: 13px;
+  color: #64748b;
+}
+.dark-admin .admin-details-no-evidence {
+  color: #94a3b8;
+}
+
+/* ── Evidence card ── */
+.admin-details-evidence-card {
+  background: rgba(0, 0, 0, 0.04);   /* light mode */
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  padding: 12px;
+}
+.dark-admin .admin-details-evidence-card {
+  background: rgba(255, 255, 255, 0.05);  /* dark mode */
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.admin-details-evidence-name {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #1e293b;          /* light mode */
+}
+.dark-admin .admin-details-evidence-name {
+  color: #e2e8f0;          /* dark mode */
+}
+.admin-details-evidence-img {
+  max-width: 100%;
+  border-radius: 8px;
+  max-height: 200px;
+  object-fit: contain;
+  display: block;
+}
+.admin-details-evidence-link {
+  color: #2563eb;          /* light mode */
+  font-size: 13px;
+  word-break: break-all;
+  text-decoration: none;
+}
+.dark-admin .admin-details-evidence-link {
+  color: #4fa3e0;          /* dark mode */
+}
+.admin-details-evidence-nolink {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* ── Ensure the modal itself is themed ── */
+.admin-chat-modal {
+  background: #ffffff;     /* light mode */
+  color: #1e293b;
+}
+.dark-admin .admin-chat-modal {
+  background: #1e293b;     /* dark mode */
+  color: #e2e8f0;
+}
+

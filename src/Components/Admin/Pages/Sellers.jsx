@@ -9,8 +9,6 @@ import {
   getTotalSellers,
   getVerifiedSellers,
   getPendingSellersPage,
-  getSellersPage,
-  getAllSellersPage,
   getSellerDetailsByUserId,
   suspendSeller,
   restoreSeller,
@@ -18,6 +16,9 @@ import {
   rejectSeller,
   findUserIdByEmail,
 } from "../../../API/admindashboard";
+import api from "../../../API/axios";
+
+const API_BASE = "https://e-safqa.runasp.net";
 
 /* ══════════════════════════════════════════════════════════════════
    SAFE FETCH — swallows 404 / 405 silently, returns null
@@ -31,6 +32,14 @@ const safeFetch = async (fn) => {
     throw err;
   }
 };
+
+/* ── Auth token helper ── */
+const getAuthToken = () =>
+  localStorage.getItem("adminToken") ||
+  localStorage.getItem("token") ||
+  sessionStorage.getItem("adminToken") ||
+  sessionStorage.getItem("token") ||
+  "";
 
 /* ══════════════════════════════════════════════════════════════════
    HELPERS
@@ -52,34 +61,20 @@ const getNumber = (res) => {
   return 0;
 };
 
-/**
- * Extracts ALL possible IDs from a raw seller object.
- * Returns:
- *   numericId  — first numeric-looking value > 0 (used for display & API calls)
- *   uuidId     — first UUID-like value (contains "-")
- *   anyId      — best available ID string (uuid preferred, then numeric)
- */
 const extractIds = (item) => {
   if (!item) return { numericId: 0, uuidId: "", anyId: "" };
-
-  // All candidate fields in priority order
   const rawCandidates = [
     item.userId,   item.UserId,   item.userID,   item.user_id,
     item.sellerId, item.SellerId, item.sellerid, item.seller_id,
     item.id,       item.Id,       item.ID,
   ];
-
-  const candidates = rawCandidates
-    .map((v) => String(v ?? "").trim())
-    .filter(Boolean);
-
+  const candidates = rawCandidates.map((v) => String(v ?? "").trim()).filter(Boolean);
   const uuidId = candidates.find((v) => /^[0-9a-f-]{36}$/i.test(v)) || "";
   const numericRaw = candidates.find(
     (v) => !v.includes("-") && /^\d+$/.test(v) && Number(v) > 0
   );
   const numericId = numericRaw ? Number(numericRaw) : 0;
   const anyId = uuidId || (numericId ? String(numericId) : candidates[0] || "");
-
   return { numericId, uuidId, anyId };
 };
 
@@ -295,10 +290,6 @@ function DetailRow({ label, value }) {
   );
 }
 
-/**
- * DocImage — renders a base64 image inline with a click-to-enlarge lightbox.
- * Tries png first; if that fails, tries jpeg.
- */
 function DocImage({ label, b64, onExpand }) {
   const [failed, setFailed] = useState(false);
   const [mime, setMime]     = useState("image/png");
@@ -356,14 +347,9 @@ function Pagination({ page, totalPages, loading, onPrev, onNext, t }) {
   );
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   RAW DETAILS DUMP — shows every field from the API response
-   so nothing is ever "missing" due to unknown field names
-══════════════════════════════════════════════════════════════════ */
 function RawDetailsPanel({ data, t }) {
   if (!data || typeof data !== "object") return null;
 
-  // Fields we render explicitly (in a nice order)
   const knownFields = [
     ["id",                 t("id",           "ID")],
     ["sellerId",           t("sellerId",      "Seller ID")],
@@ -393,19 +379,16 @@ function RawDetailsPanel({ data, t }) {
     if (shownKeys.has(key)) continue;
     const val = data[key];
     if (val === undefined || val === null) continue;
-    // Skip binary/base64-looking blobs and System.* type strings
     if (typeof val === "string" && (val.startsWith("System.") || val.length > 300)) continue;
     shownKeys.add(key);
     rendered.push(<DetailRow key={key} label={label} value={String(val)} />);
   }
 
-  // Render any REMAINING fields we didn't explicitly handle
-  // so nothing is hidden from the admin
   for (const [key, val] of Object.entries(data)) {
     if (shownKeys.has(key)) continue;
-    if (key === "storeLogo" || key === "crDocument" || key === "ownerIdDocument") continue; // handled separately
+    if (key === "storeLogo" || key === "crDocument" || key === "ownerIdDocument") continue;
     if (val === null || val === undefined) continue;
-    if (typeof val === "object") continue; // nested objects — skip to avoid clutter
+    if (typeof val === "object") continue;
     if (typeof val === "string" && (val.startsWith("System.") || val.length > 300)) continue;
     rendered.push(<DetailRow key={key} label={key} value={String(val)} />);
   }
@@ -469,9 +452,7 @@ export default function Sellers() {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [lightboxSrc, setLightboxSrc]       = useState("");
 
-  // Cache: email → { uuid, numericId }
-  const idCacheRef = useRef({});   // { [email]: { uuid: string, numericId: number } }
-
+  const idCacheRef = useRef({});
   const getCached    = (email) => idCacheRef.current[email] || {};
   const setCacheUuid = (email, uuid) => {
     if (!email || email === "-" || !uuid) return;
@@ -482,7 +463,6 @@ export default function Sellers() {
     idCacheRef.current[email] = { ...getCached(email), numericId: Number(numId) };
   };
 
-  // Triggers re-render for ID column display
   const [displayIdMap, setDisplayIdMap] = useState({});
   const updateDisplayId = (email, numId) => {
     if (!email || email === "-" || !numId) return;
@@ -503,61 +483,31 @@ export default function Sellers() {
     navigate("/login", { replace: true });
   }
 
-  /**
-   * Resolve the best ID to use for API calls (approveSeller, suspendSeller, etc.)
-   * Strategy (in order):
-   *   1. seller.uuidId  (UUID already in the row data)
-   *   2. email cache uuid
-   *   3. findUserIdByEmail
-   *   4. seller.numericId (numeric sellerId)
-   *   5. seller.anyId
-   */
   const resolveActionId = async (seller) => {
-    // 1. UUID already attached to the row
     if (seller?.uuidId) return seller.uuidId;
-
     const email = seller?.email || "";
-
-    // 2. Cached UUID
     if (email && email !== "-") {
       const cached = getCached(email);
       if (cached.uuid) return cached.uuid;
     }
-
-    // 3. Look up UUID from /User list
     if (email && email !== "-") {
       try {
         const uuid = await findUserIdByEmail(email);
-        if (uuid) {
-          setCacheUuid(email, uuid);
-          return uuid;
-        }
+        if (uuid) { setCacheUuid(email, uuid); return uuid; }
       } catch (_) { /* fall through */ }
     }
-
-    // 4. Numeric sellerId (works for suspend/restore on some backends)
     if (seller?.numericId > 0) return String(seller.numericId);
-
-    // 5. anyId fallback
     if (seller?.anyId) return seller.anyId;
-
     return "";
   };
 
-  /**
-   * Resolve ID for fetching seller details via GET /seller/seller/{id}
-   * Prefers UUID but falls back to numericId since some backends accept both.
-   */
   const resolveDetailsId = async (seller) => {
-    // Try UUID first
     const actionId = await resolveActionId(seller);
     if (actionId) return actionId;
-    // Numeric fallback
     if (seller?.numericId > 0) return String(seller.numericId);
     return "";
   };
 
-  /* ── background UUID resolution for All Sellers rows ── */
   const resolveAllSellerUuids = useCallback(async (sellerList) => {
     const unresolved = sellerList.filter((s) => {
       if (!s.email || s.email === "-") return false;
@@ -565,21 +515,17 @@ export default function Sellers() {
       return !cached.uuid;
     });
     if (unresolved.length === 0) return;
-
     const BATCH = 3;
     for (let i = 0; i < unresolved.length; i += BATCH) {
       const batch = unresolved.slice(i, i + BATCH);
       await Promise.allSettled(
         batch.map(async (seller) => {
           try {
-            // If we already have a numericId, try fetching details directly first
-            // (avoids scanning all user pages)
             let uuid = "";
             if (seller.numericId > 0) {
               const res = await safeFetch(() => getSellerDetailsByUserId(String(seller.numericId)));
               const numId = res?.data?.id;
               if (numId) updateDisplayId(seller.email, numId);
-              // Extract UUID from response if available
               const respUuid = res?.data?.userId || res?.data?.UserId || "";
               if (respUuid && respUuid.includes("-")) {
                 uuid = respUuid;
@@ -587,11 +533,9 @@ export default function Sellers() {
                 return;
               }
             }
-            // Fall back to user list scan
             uuid = await findUserIdByEmail(seller.email);
             if (!uuid) return;
             setCacheUuid(seller.email, uuid);
-            // Now fetch details with UUID to get numericId
             if (!getCached(seller.email).numericId) {
               const res2 = await safeFetch(() => getSellerDetailsByUserId(uuid));
               const numId = res2?.data?.id;
@@ -639,13 +583,11 @@ export default function Sellers() {
       setPendingPage(Number(root?.currentPage || root?.page || targetPage));
       setPendingTotalPages(Number(root?.totalPages || root?.pages || 1));
 
-      // Background: cache IDs for each pending seller
       normalized.forEach(async (seller) => {
         const email = seller.email;
         if (!email || email === "-") return;
         if (seller.uuidId) {
           setCacheUuid(email, seller.uuidId);
-          // Try to get numeric display ID
           if (!getCached(email).numericId) {
             try {
               const r = await safeFetch(() => getSellerDetailsByUserId(seller.uuidId));
@@ -655,7 +597,6 @@ export default function Sellers() {
           }
         } else if (seller.numericId > 0) {
           updateDisplayId(email, seller.numericId);
-          // Try to get UUID
           if (!getCached(email).uuid) {
             try {
               const uuid = await findUserIdByEmail(email);
@@ -669,36 +610,69 @@ export default function Sellers() {
     }
   };
 
-  /* ── loadSellers ──
-     Tries /seller first, falls back to /GetAll if empty.
-  ── */
+  /* ══════════════════════════════════════════════════════════════
+     loadSellers — fetches from https://e-safqa.runasp.net/api/seller/GetAll?page=1&pageSize=10
+     with pagination params
+  ══════════════════════════════════════════════════════════════ */
   const loadSellers = async (targetPage = sellerPage) => {
     setTableLoading(true);
     try {
-      let res  = await safeFetch(() => getSellersPage(targetPage, pageSize));
-      let root = res?.data || {};
-      let list = Array.isArray(root?.data) ? root.data
-               : Array.isArray(root)       ? root
-               : [];
+      // Use the full URL with the correct port and endpoint
+      const response = await api.get(`https://e-safqa.runasp.net/api/seller/GetAll`, {
+        params: {
+          page: targetPage,
+          pageSize: pageSize
+        }
+      });
 
-      // Fallback: try /GetAll if primary returned nothing
-      if (list.length === 0) {
-        const res2  = await safeFetch(() => getAllSellersPage(targetPage, pageSize));
-        if (res2) {
-          root = res2?.data || {};
-          list = Array.isArray(root?.data) ? root.data
-               : Array.isArray(root)       ? root
-               : [];
+      const root = response.data;
+      console.log("✅ Sellers API Response:", root);
+      
+      // Handle different response structures
+      let list = [];
+      if (Array.isArray(root?.data)) {
+        list = root.data;
+      } else if (Array.isArray(root)) {
+        list = root;
+      } else if (root?.items && Array.isArray(root.items)) {
+        list = root.items;
+      } else if (root?.results && Array.isArray(root.results)) {
+        list = root.results;
+      } else {
+        // If no array found, try to extract from any property that might contain the list
+        for (const key of ['sellers', 'users', 'records', 'list']) {
+          if (root?.[key] && Array.isArray(root[key])) {
+            list = root[key];
+            break;
+          }
         }
       }
 
       const normalized = list.map(normalizeSeller);
       setSellers(normalized);
+      
+      // Extract pagination info from response
+      const totalCount = root?.totalCount || root?.total || list.length;
       setSellerPage(Number(root?.currentPage || root?.page || targetPage));
-      setSellerTotalPages(Number(root?.totalPages || root?.pages || 1));
+      setSellerTotalPages(Math.ceil(totalCount / pageSize) || 1);
 
       // Background UUID resolution for suspend/restore
-      resolveAllSellerUuids(normalized);
+      if (normalized.length > 0) {
+        resolveAllSellerUuids(normalized);
+      }
+    } catch (err) {
+      const status = Number(err?.response?.status || 0);
+      console.error("loadSellers error:", err);
+      
+      if (status === 401) {
+        console.error("Authentication failed. Please login again.");
+        setError("Session expired. Please logout and login again.");
+      } else if (status === 404) {
+        console.warn("API endpoint not found. The endpoint might be empty or not exist.");
+        setSellers([]); // Set empty array instead of error for 404
+      } else if (status !== 404 && status !== 405) {
+        setError(err?.response?.data?.message || err?.message || "Failed to load sellers.");
+      }
     } finally {
       setTableLoading(false);
     }
@@ -764,9 +738,6 @@ export default function Sellers() {
     }
   };
 
-  /* ── openDetails ──
-     Tries multiple ID strategies so details always load.
-  ── */
   const openDetails = async (seller) => {
     setDetailsOpen(true);
     setDetailsLoading(true);
@@ -775,13 +746,12 @@ export default function Sellers() {
     try {
       const detailId = await resolveDetailsId(seller);
       if (!detailId) {
-        setSellerDetails({ error: "Could not resolve seller ID. This seller has no UUID or numeric ID available." });
+        setSellerDetails({ error: "Could not resolve seller ID." });
         return;
       }
 
       const res = await safeFetch(() => getSellerDetailsByUserId(detailId));
 
-      // If UUID failed and we have a numericId, try that too
       if (!res && seller?.numericId > 0 && detailId !== String(seller.numericId)) {
         const res2 = await safeFetch(() => getSellerDetailsByUserId(String(seller.numericId)));
         if (res2?.data) {
@@ -806,12 +776,11 @@ export default function Sellers() {
 
       setSellerDetails(data);
 
-      // Cache whatever we learn from the details response
       const numId   = data?.id;
       const resUuid = data?.userId || data?.UserId || "";
       const email   = seller?.email;
       if (email && email !== "-") {
-        if (numId)                          updateDisplayId(email, numId);
+        if (numId)                            updateDisplayId(email, numId);
         if (resUuid && resUuid.includes("-")) setCacheUuid(email, resUuid);
       }
     } catch (err) {
@@ -823,20 +792,15 @@ export default function Sellers() {
     }
   };
 
-  /* ── display ID for table cells ── */
   const getDisplayId = (s) => {
     const email = s?.email;
-    // 1. Cached numeric ID (most readable)
     if (email && email !== "-") {
       const cached = getCached(email);
       if (cached.numericId) return String(cached.numericId);
       if (displayIdMap[email]) return displayIdMap[email];
     }
-    // 2. numericId from row data
     if (s?.numericId > 0) return String(s.numericId);
-    // 3. Short UUID suffix
     if (s?.uuidId) return `…${s.uuidId.slice(-8)}`;
-    // 4. anyId
     if (s?.anyId) return s.anyId;
     return "-";
   };
@@ -1062,7 +1026,6 @@ export default function Sellers() {
               overflow: "hidden",
             }}
           >
-            {/* Header */}
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "space-between",
               padding: "18px 24px", borderBottom: "1px solid rgba(148,163,184,0.15)",
@@ -1078,7 +1041,6 @@ export default function Sellers() {
               </button>
             </div>
 
-            {/* Scrollable body */}
             <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
               {detailsLoading ? (
                 <div style={{ display: "grid", gap: 12, maxWidth: 600 }}>
@@ -1093,15 +1055,10 @@ export default function Sellers() {
                   gap: "0 40px",
                   alignItems: "start",
                 }}>
-                  {/* Left: text fields */}
                   <div className="sl-details-grid">
                     <RawDetailsPanel data={sellerDetails} t={t} />
                   </div>
-
-                  {/* Right: images */}
                   <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-
-                    {/* Store Logo */}
                     {sellerDetails.storeLogo &&
                       !sellerDetails.storeLogo.startsWith("System.") &&
                       sellerDetails.storeLogo !== "MAA=" &&
@@ -1123,20 +1080,8 @@ export default function Sellers() {
                         />
                       </div>
                     )}
-
-                    {/* CR Document */}
-                    <DocImage
-                      label={t("crDocument", "CR Document")}
-                      b64={sellerDetails.crDocument}
-                      onExpand={(src) => setLightboxSrc(src)}
-                    />
-
-                    {/* Owner ID */}
-                    <DocImage
-                      label={t("ownerIdDocument", "Owner ID Document")}
-                      b64={sellerDetails.ownerIdDocument}
-                      onExpand={(src) => setLightboxSrc(src)}
-                    />
+                    <DocImage label={t("crDocument", "CR Document")} b64={sellerDetails.crDocument} onExpand={(src) => setLightboxSrc(src)} />
+                    <DocImage label={t("ownerIdDocument", "Owner ID Document")} b64={sellerDetails.ownerIdDocument} onExpand={(src) => setLightboxSrc(src)} />
                   </div>
                 </div>
               ) : (
@@ -1161,11 +1106,7 @@ export default function Sellers() {
           <img
             src={lightboxSrc}
             alt="enlarged"
-            style={{
-              maxWidth: "92vw", maxHeight: "92vh",
-              objectFit: "contain", borderRadius: 12,
-              boxShadow: "0 8px 60px rgba(0,0,0,0.7)",
-            }}
+            style={{ maxWidth: "92vw", maxHeight: "92vh", objectFit: "contain", borderRadius: 12, boxShadow: "0 8px 60px rgba(0,0,0,0.7)" }}
             onClick={(e) => e.stopPropagation()}
           />
           <button

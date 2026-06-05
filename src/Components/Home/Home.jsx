@@ -28,6 +28,8 @@ const FALLBACK_CATEGORY_IMAGES = {
     "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=1200&auto=format&fit=crop",
 };
 
+/* ─── helpers ─────────────────────────────────────────────────── */
+
 const normalizeListResponse = (data) => {
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.data)) return data.data;
@@ -36,6 +38,46 @@ const normalizeListResponse = (data) => {
   if (Array.isArray(data?.items)) return data.items;
   if (Array.isArray(data?.value)) return data.value;
   return [];
+};
+
+/**
+ * Robustly read totalPages from any API response shape.
+ * Tries every known casing / alias before falling back to 1.
+ */
+const getTotalPages = (root) => {
+  if (!root || typeof root !== "object") return 1;
+  const keys = [
+    "totalPages", "TotalPages", "total_pages",
+    "pageCount",  "PageCount",  "page_count",
+    "pages",      "Pages",
+  ];
+  for (const k of keys) {
+    const v = Number(root[k]);
+    if (Number.isFinite(v) && v > 0) return v;
+  }
+  // derive from totalCount / pageSize if present
+  const total = Number(
+    root.totalCount ?? root.TotalCount ?? root.totalcount ??
+    root.total      ?? root.Total      ?? 0
+  );
+  const size = Number(
+    root.pageSize ?? root.PageSize ?? root.page_size ?? 0
+  );
+  if (total > 0 && size > 0) return Math.ceil(total / size);
+  return 1;
+};
+
+const getCurrentPage = (root, fallback = 1) => {
+  if (!root || typeof root !== "object") return fallback;
+  const keys = [
+    "currentPage", "CurrentPage", "current_page",
+    "page",        "Page",
+  ];
+  for (const k of keys) {
+    const v = Number(root[k]);
+    if (Number.isFinite(v) && v > 0) return v;
+  }
+  return fallback;
 };
 
 const formatMoney = (value) => {
@@ -130,6 +172,8 @@ const normalizeCategoryItem = (item, index) => {
   };
 };
 
+/* ─── sub-components ──────────────────────────────────────────── */
+
 const SectionHeader = ({ title, actionText, onAction }) => (
   <div className="home-section-row">
     <p><span>{title}</span></p>
@@ -176,7 +220,6 @@ const HomeSkeleton = () => (
 );
 
 const AuctionMiniCard = ({ item, t, onOpen, favIds, onToggleFav }) => {
-  const statusKey = getStatusKey(item.status);
   const isFav = favIds.has(item.id);
   const [favLoading, setFavLoading] = useState(false);
 
@@ -209,9 +252,8 @@ const AuctionMiniCard = ({ item, t, onOpen, favIds, onToggleFav }) => {
       <div className="home-auction-mini-image-wrap">
         <img src={item.image} alt={item.title} className="home-auction-mini-image" />
         <span className={`home-badge home-badge--${getStatusClass(item.status)}`}>
-          {t(`home.${statusKey}`, statusKey)}
+          {t(`home.${getStatusKey(item.status)}`, getStatusKey(item.status))}
         </span>
-
         <button
           type="button"
           className={`home-fav-star-btn ${isFav ? "home-fav-star-btn--active" : ""}`}
@@ -222,7 +264,6 @@ const AuctionMiniCard = ({ item, t, onOpen, favIds, onToggleFav }) => {
           <i className={isFav ? "fa-solid fa-star" : "fa-regular fa-star"}></i>
         </button>
       </div>
-
       <div className="home-auction-mini-body">
         <div className="home-auction-mini-id">
           {t("home.lotNumber", { id: item.id })}
@@ -238,20 +279,35 @@ const AuctionMiniCard = ({ item, t, onOpen, favIds, onToggleFav }) => {
   );
 };
 
-// ── CHANGED: simple pagination component matching admin style ──
+/* Matches admin style exactly */
 function Pagination({ page, totalPages, loading, onPrev, onNext, t }) {
+  if (totalPages <= 1) return null;
   return (
     <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 12, marginTop: 16 }}>
-      <button className="action-btn view" disabled={page <= 1 || loading} onClick={onPrev}>
+      <button
+        className="action-btn view"
+        disabled={page <= 1 || loading}
+        onClick={onPrev}
+      >
         {t("previous", "Previous")}
       </button>
-      <strong>{t("page", "Page")} {page} {t("of", "of")} {totalPages}</strong>
-      <button className="action-btn view" disabled={page >= totalPages || loading} onClick={onNext}>
+      <strong>
+        {t("page", "Page")} {page} {t("of", "of")} {totalPages}
+      </strong>
+      <button
+        className="action-btn view"
+        disabled={page >= totalPages || loading}
+        onClick={onNext}
+      >
         {t("next", "Next")}
       </button>
     </div>
   );
 }
+
+/* ─── main component ──────────────────────────────────────────── */
+
+const TRENDING_PAGE_SIZE = 20;
 
 export default function Home() {
   const { t } = useTranslation();
@@ -269,34 +325,32 @@ export default function Home() {
 
   const [favIds, setFavIds] = useState(new Set());
 
-  // ── CHANGED: trending pagination state ──
-  const [trendingPage, setTrendingPage]           = useState(1);
+  /* ── trending pagination ── */
+  const [trendingPage,       setTrendingPage]       = useState(1);
   const [trendingTotalPages, setTrendingTotalPages] = useState(1);
-  const [trendingLoading, setTrendingLoading]     = useState(false);
-  const TRENDING_PAGE_SIZE = 20;
+  const [trendingLoading,    setTrendingLoading]    = useState(false);
 
   const [cardsPerView, setCardsPerView] = useState(() =>
     getCardsPerView(typeof window !== "undefined" ? window.innerWidth : 1440)
   );
 
-  const categoriesRef = useRef(null);
-  const endingSoonRef = useRef(null);
+  const categoriesRef    = useRef(null);
+  const endingSoonRef    = useRef(null);
 
-  const isDraggingRef = useRef(false);
-  const dragMovedRef = useRef(false);
-  const suppressClickRef = useRef(false);
-  const dragStartXRef = useRef(0);
-  const dragStartScrollRef = useRef(0);
+  const isDraggingRef        = useRef(false);
+  const dragMovedRef         = useRef(false);
+  const suppressClickRef     = useRef(false);
+  const dragStartXRef        = useRef(0);
+  const dragStartScrollRef   = useRef(0);
 
-  const autoTimerRef = useRef(null);
-  const resumeTimerRef = useRef(null);
-  const scrollEndTimerRef = useRef(null);
-
+  const autoTimerRef         = useRef(null);
+  const resumeTimerRef       = useRef(null);
+  const scrollEndTimerRef    = useRef(null);
   const programmaticScrollRef = useRef(false);
-  const programmaticTimerRef = useRef(null);
+  const programmaticTimerRef  = useRef(null);
 
   const [endingSoonIndex, setEndingSoonIndex] = useState(0);
-  const [dotDirection, setDotDirection] = useState("next");
+  const [dotDirection,    setDotDirection]    = useState("next");
 
   const openAuctionDetails = (auctionId) => {
     if (!auctionId) return;
@@ -312,9 +366,7 @@ export default function Home() {
     });
   };
 
-  useEffect(() => {
-    document.title = t("home.title", title);
-  }, [title, t]);
+  useEffect(() => { document.title = t("home.title", title); }, [title, t]);
 
   useEffect(() => {
     const updateFavicon = (iconUrl) => {
@@ -337,26 +389,43 @@ export default function Home() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // ── CHANGED: separate function to load trending by page ──
+  /* ── load a single page of trending ── */
   const loadTrending = async (page = 1) => {
     try {
       setTrendingLoading(true);
-      const res = await api.get("/User/trending", {
+      const res  = await api.get("/User/trending", {
         params: { page, pageSize: TRENDING_PAGE_SIZE },
         timeout: 60000,
       });
-      const root = res?.data || {};
-      const raw = normalizeListResponse(root);
+
+      // The API may wrap results: { data: [...], totalPages: N, currentPage: N }
+      // OR return the array directly.  Handle both.
+      const root = res?.data ?? {};
+      const raw  = normalizeListResponse(root);
+
       setTrending(raw.map(normalizeTrendingItem));
-      setTrendingPage(Number(root?.currentPage || page));
-      setTrendingTotalPages(Number(root?.totalPages || 1));
+
+      const resolvedPage  = getCurrentPage(root, page);
+      const resolvedTotal = getTotalPages(root);
+
+      setTrendingPage(resolvedPage);
+      setTrendingTotalPages(resolvedTotal);
+
+      // scroll back to trending section on page change (UX)
+      if (page > 1) {
+        setTimeout(() => {
+          document.getElementById("home-trending-section")
+            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 80);
+      }
     } catch {
-      // silent fail — keep previous trending data
+      // silent fail — keep previous data
     } finally {
       setTrendingLoading(false);
     }
   };
 
+  /* ── initial full-page load ── */
   useEffect(() => {
     let mounted = true;
 
@@ -364,12 +433,11 @@ export default function Home() {
       setLoading(true);
 
       const requests = [
-        api.get("/User/ending-soon", { params: { page: 1, pageSize: 10 }, timeout: 60000 }),
-        // ── CHANGED: pageSize 20, also read totalPages from response ──
-        api.get("/User/trending",    { params: { page: 1, pageSize: TRENDING_PAGE_SIZE }, timeout: 60000 }),
-        api.get("/User/categories",  { params: { page: 1, pageSize: 10 }, timeout: 60000 }),
-        api.get("/AI/recommendations", { timeout: 60000 }),
-        api.get("/Auction/favorites", { timeout: 60000 }),
+        api.get("/User/ending-soon",    { params: { page: 1, pageSize: 10 },               timeout: 60000 }),
+        api.get("/User/trending",       { params: { page: 1, pageSize: TRENDING_PAGE_SIZE }, timeout: 60000 }),
+        api.get("/User/categories",     { params: { page: 1, pageSize: 10 },               timeout: 60000 }),
+        api.get("/AI/recommendations",  { timeout: 60000 }),
+        api.get("/Auction/favorites",   { timeout: 60000 }),
       ];
 
       const [endingRes, trendingRes, categoriesRes, recommendationsRes, favsRes] =
@@ -384,13 +452,12 @@ export default function Home() {
         setEndingSoon([]);
       }
 
-      // ── CHANGED: read totalPages for trending ──
       if (trendingRes.status === "fulfilled") {
-        const root = trendingRes.value?.data || {};
-        const raw = normalizeListResponse(root);
+        const root = trendingRes.value?.data ?? {};
+        const raw  = normalizeListResponse(root);
         setTrending(raw.map(normalizeTrendingItem));
-        setTrendingPage(Number(root?.currentPage || 1));
-        setTrendingTotalPages(Number(root?.totalPages || 1));
+        setTrendingPage(getCurrentPage(root, 1));
+        setTrendingTotalPages(getTotalPages(root));
       } else {
         setTrending([]);
       }
@@ -425,6 +492,8 @@ export default function Home() {
     fetchHomeData();
     return () => { mounted = false; };
   }, []);
+
+  /* ─── ending-soon slider logic (unchanged) ──────────────────── */
 
   const cloneSize = useMemo(() => {
     return endingSoon.length ? Math.max(cardsPerView, 3) : 0;
@@ -466,7 +535,7 @@ export default function Home() {
     const current = endingSoonIndex;
     const normalized = ((realIndex % endingSoon.length) + endingSoon.length) % endingSoon.length;
     if (normalized !== current) {
-      const forwardDistance = (normalized - current + endingSoon.length) % endingSoon.length;
+      const forwardDistance  = (normalized - current + endingSoon.length) % endingSoon.length;
       const backwardDistance = (current - normalized + endingSoon.length) % endingSoon.length;
       setDotDirection(forwardDistance <= backwardDistance ? "next" : "prev");
     }
@@ -538,11 +607,11 @@ export default function Home() {
     const slider = endingSoonRef.current;
     if (!slider) return;
     pauseAutoAfterManual();
-    isDraggingRef.current = true;
-    dragMovedRef.current = false;
-    suppressClickRef.current = false;
-    dragStartXRef.current = clientX;
-    dragStartScrollRef.current = slider.scrollLeft;
+    isDraggingRef.current       = true;
+    dragMovedRef.current        = false;
+    suppressClickRef.current    = false;
+    dragStartXRef.current       = clientX;
+    dragStartScrollRef.current  = slider.scrollLeft;
     slider.classList.add("dragging");
   };
 
@@ -566,17 +635,17 @@ export default function Home() {
     }
   };
 
-  const handleMouseDown = (e) => handlePointerDown(e.pageX);
-  const handleMouseMove = (e) => { if (!isDraggingRef.current) return; e.preventDefault(); handlePointerMove(e.pageX); };
+  const handleMouseDown  = (e) => handlePointerDown(e.pageX);
+  const handleMouseMove  = (e) => { if (!isDraggingRef.current) return; e.preventDefault(); handlePointerMove(e.pageX); };
   const handleTouchStart = (e) => { const touch = e.touches?.[0]; if (!touch) return; handlePointerDown(touch.pageX); };
-  const handleTouchMove = (e) => { const touch = e.touches?.[0]; if (!touch) return; handlePointerMove(touch.pageX); };
+  const handleTouchMove  = (e) => { const touch = e.touches?.[0]; if (!touch) return; handlePointerMove(touch.pageX); };
 
   const handleAuctionCardClick = (e, auctionId) => {
     if (suppressClickRef.current || dragMovedRef.current) {
       e.preventDefault();
       e.stopPropagation();
       suppressClickRef.current = false;
-      dragMovedRef.current = false;
+      dragMovedRef.current     = false;
       return;
     }
     openAuctionDetails(auctionId);
@@ -603,6 +672,8 @@ export default function Home() {
     if (!categoriesRef.current) return;
     categoriesRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
   };
+
+  /* ─── render ────────────────────────────────────────────────── */
 
   return (
     <>
@@ -650,13 +721,12 @@ export default function Home() {
         .home-ending-dot-window.dot-moving-prev { animation: dotSlidePrev 0.25s ease; }
         @keyframes dotSlideNext {
           from { transform: translateX(12px) scale(0.85); opacity: 0.4; }
-          to   { transform: translateX(0) scale(1); opacity: 1; }
+          to   { transform: translateX(0)    scale(1);    opacity: 1; }
         }
         @keyframes dotSlidePrev {
           from { transform: translateX(-12px) scale(0.85); opacity: 0.4; }
-          to   { transform: translateX(0) scale(1); opacity: 1; }
+          to   { transform: translateX(0)     scale(1);    opacity: 1; }
         }
-
         .home-mini-card-hoverable { position: relative; }
         .home-fav-star-btn {
           position: absolute;
@@ -689,13 +759,8 @@ export default function Home() {
           background: #fef3c7 !important;
           color: #d97706 !important;
         }
-        .home-fav-star-btn:hover {
-          background: #fef3c7;
-        }
-        .home-fav-star-btn:disabled {
-          cursor: not-allowed;
-          opacity: 0.6 !important;
-        }
+        .home-fav-star-btn:hover { background: #fef3c7; }
+        .home-fav-star-btn:disabled { cursor: not-allowed; opacity: 0.6 !important; }
       `}</style>
 
       <div className="home">
@@ -708,7 +773,8 @@ export default function Home() {
             <HomeSkeleton />
           ) : (
             <>
-              {endingSoon.length > 0 ? (
+              {/* ── Ending Soon ── */}
+              {endingSoon.length > 0 && (
                 <>
                   <SectionHeader title={t("home.endingSoon")} />
                   <div className="home-ending-soon-wrap">
@@ -745,14 +811,15 @@ export default function Home() {
                         </div>
                       ))}
                     </div>
-                    {endingSoon.length > 1 ? (
+                    {endingSoon.length > 1 && (
                       <div className="home-ending-dots">{renderFiveDots()}</div>
-                    ) : null}
+                    )}
                   </div>
                 </>
-              ) : null}
+              )}
 
-              {categories.length > 0 ? (
+              {/* ── Categories ── */}
+              {categories.length > 0 && (
                 <>
                   <div ref={categoriesRef}>
                     <SectionHeader
@@ -773,41 +840,54 @@ export default function Home() {
                     ))}
                   </div>
                 </>
-              ) : null}
+              )}
 
-              {trending.length > 0 ? (
-                <>
+              {/* ── Trending Now ── */}
+              {trending.length > 0 && (
+                <section id="home-trending-section">
                   <SectionHeader title={t("home.trendingNow")} />
-                  <div className="home-auction-grid">
-                    {trendingLoading
-                      ? <p>{t("loading", "Loading...")}</p>
-                      : trending.map((item) => (
-                          <AuctionMiniCard
-                            key={item.id}
-                            item={item}
-                            t={t}
-                            onOpen={openAuctionDetails}
-                            favIds={favIds}
-                            onToggleFav={handleToggleFav}
-                          />
-                        ))
-                    }
-                  </div>
-                  {/* ── CHANGED: only show pagination if more than one page ── */}
-                  {trendingTotalPages > 1 && (
-                    <Pagination
-                      page={trendingPage}
-                      totalPages={trendingTotalPages}
-                      loading={trendingLoading}
-                      onPrev={() => loadTrending(trendingPage - 1)}
-                      onNext={() => loadTrending(trendingPage + 1)}
-                      t={t}
-                    />
-                  )}
-                </>
-              ) : null}
 
-              {recommendationsVisible ? (
+                  {trendingLoading ? (
+                    <div className="home-skeleton-grid">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <div className="home-skeleton-card" key={i}>
+                          <div className="home-skeleton-thumb shimmer" />
+                          <div className="home-skeleton-lines">
+                            <div className="home-skeleton-line shimmer" />
+                            <div className="home-skeleton-line short shimmer" />
+                            <div className="home-skeleton-line mid shimmer" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="home-auction-grid">
+                      {trending.map((item) => (
+                        <AuctionMiniCard
+                          key={item.id}
+                          item={item}
+                          t={t}
+                          onOpen={openAuctionDetails}
+                          favIds={favIds}
+                          onToggleFav={handleToggleFav}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  <Pagination
+                    page={trendingPage}
+                    totalPages={trendingTotalPages}
+                    loading={trendingLoading}
+                    onPrev={() => loadTrending(trendingPage - 1)}
+                    onNext={() => loadTrending(trendingPage + 1)}
+                    t={t}
+                  />
+                </section>
+              )}
+
+              {/* ── Recommendations ── */}
+              {recommendationsVisible && (
                 <>
                   <SectionHeader title={t("home.recommendations")} />
                   <div className="home-auction-grid home-auction-grid--recommendations">
@@ -823,7 +903,7 @@ export default function Home() {
                     ))}
                   </div>
                 </>
-              ) : null}
+              )}
             </>
           )}
         </div>
