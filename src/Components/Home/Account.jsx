@@ -2,10 +2,12 @@ import React, { useEffect, useState } from "react";
 import icon from "../../assets/2.png";
 import { getUserAccount } from "../../API/userProfile";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 
 export default function Account() {
   const { t, i18n } = useTranslation();
   const isArabic = i18n.language === "ar";
+  const navigate = useNavigate();
 
   const [accountData, setAccountData] = useState({
     fullName: "",
@@ -87,31 +89,42 @@ export default function Account() {
           <div className="alert alert-info">{t("loading", "Loading...")}</div>
         ) : (
           <>
-            <div className="my-3">
-              <div className="image">
+            {/* ── Avatar ── */}
+            <div className="my-3 d-flex justify-content-center">
+              <div
+                style={{
+                  width: 110,
+                  height: 110,
+                  borderRadius: "50%",
+                  overflow: "hidden",
+                  flexShrink: 0,
+                  background: "#eef2f7",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
                 {accountData.imageSrc ? (
-                  <img src={accountData.imageSrc} alt={t("avatar", "avatar")} />
-                ) : (
-                  <div
+                  <img
+                    src={accountData.imageSrc}
+                    alt={t("avatar", "avatar")}
                     style={{
-                      width: 110,
-                      height: 110,
-                      borderRadius: "50%",
-                      margin: "0 auto",
-                      background: "#eef2f7",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#8a94a6",
-                      fontSize: 32,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      display: "block",
                     }}
-                  >
-                    <i className="fa-regular fa-user"></i>
-                  </div>
+                  />
+                ) : (
+                  <i
+                    className="fa-regular fa-user"
+                    style={{ color: "#8a94a6", fontSize: 32 }}
+                  ></i>
                 )}
               </div>
             </div>
 
+            {/* ── Profile info ── */}
             <div className="info-box">
               <div className="info-row">
                 <p className="value">

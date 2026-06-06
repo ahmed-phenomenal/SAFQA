@@ -80,6 +80,7 @@ const router = createBrowserRouter([
     path: "/",
     element: <Layout />,
     children: [
+      // ── Public — no auth required (anyone can visit) ───────────
       { path: "login", element: <Signin /> },
       { path: "sign-up", element: <Register /> },
       { path: "confirm_login", element: <ConfirmLogin /> },
@@ -89,6 +90,12 @@ const router = createBrowserRouter([
       { path: "delivery", element: <Delivery /> },
       { path: "delivery/:accessKey", element: <Delivery /> },
 
+      // ── Fully public info pages (guests, registering users, all roles) ──
+      { path: "Terms&Conditions", element: <Terms_Conditions /> },
+      { path: "Privacy_Policy", element: <Privacy_Policy /> },
+      { path: "How_To_Bid", element: <How_To_Bid /> },
+
+      // ── Admin ──────────────────────────────────────────────────
       {
         element: <ProtectedRoute allowedRoles={["admin"]} />,
         children: [
@@ -102,6 +109,7 @@ const router = createBrowserRouter([
         ],
       },
 
+      // ── Shared: user + seller ──────────────────────────────────
       {
         element: <ProtectedRoute allowedRoles={["user", "seller"]} />,
         children: [
@@ -109,6 +117,7 @@ const router = createBrowserRouter([
         ],
       },
 
+      // ── User ───────────────────────────────────────────────────
       {
         element: <ProtectedRoute allowedRoles={["user"]} />,
         children: [
@@ -119,11 +128,8 @@ const router = createBrowserRouter([
           { path: "favorite", element: <Favorite /> },
           { path: "account", element: <Account /> },
           { path: "change-password", element: <ChangePassword /> },
-          { path: "Terms&Conditions", element: <Terms_Conditions /> },
           { path: "orders", element: <Order /> },
           { path: "wallet", element: <Wallet /> },
-          { path: "Privacy_Policy", element: <Privacy_Policy /> },
-          { path: "How_To_Bid", element: <How_To_Bid /> },
           { path: "auction-details", element: <AuctionDetails /> },
           { path: "tracking", element: <Tracking /> },
           { path: "chat", element: <Chat /> },
@@ -138,6 +144,7 @@ const router = createBrowserRouter([
         ],
       },
 
+      // ── Seller ─────────────────────────────────────────────────
       {
         element: <ProtectedRoute allowedRoles={["seller"]} />,
         children: [
