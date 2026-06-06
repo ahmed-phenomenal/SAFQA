@@ -21,6 +21,24 @@ const toImageSrc = (value) => {
   return `data:image/png;base64,${raw}`;
 };
 
+const getApiErrorMessage = (err, fallback) => {
+  const statusCode = err?.response?.status;
+
+  if (statusCode === 401) {
+    return "Login expired, please login again";
+  }
+
+  if (statusCode === 403) {
+    return "You have to be verified to view this section";
+  }
+
+  return (
+    err?.response?.data?.message ||
+    err?.message ||
+    fallback
+  );
+};
+
 export default function Seller_History() {
   const { t, i18n } = useTranslation();
   const isArabic = i18n.language === "ar";
@@ -121,11 +139,7 @@ export default function Seller_History() {
         }
       });
     } catch (err) {
-      setError(
-        err?.response?.data?.message ||
-          err?.message ||
-          t("failedToLoadSellerHistory")
-      );
+      setError(getApiErrorMessage(err, t("failedToLoadSellerHistory")));
     } finally {
       setLoading(false);
       setPageLoading(false);
@@ -635,7 +649,10 @@ export default function Seller_History() {
           {loading ? (
             <div className="seller-history-empty">{t("loadingHistory")}</div>
           ) : error ? (
-            <div className="seller-history-error">{error}</div>
+            <div className="seller-history-error">
+              <i className="fa-solid fa-circle-exclamation" style={{ marginRight: 8 }} />
+              {error}
+            </div>
           ) : filteredHistory.length > 0 ? (
             <>
               {filteredHistory.map((item) => (

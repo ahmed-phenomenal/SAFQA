@@ -19,10 +19,6 @@ const safeJsonParse = (value) => {
   try { return JSON.parse(value); } catch { return null; }
 };
 
-// NOTE: We intentionally do NOT check JWT expiry here.
-// Expired tokens are handled server-side — the axios interceptor will
-// automatically refresh them using the refresh token when a 401 is returned.
-// Checking expiry on the client causes premature logouts when the tab is idle.
 const decodeJwtPayload = (token) => {
   try {
     if (!token || typeof token !== "string") return null;
@@ -114,7 +110,6 @@ export const getStoredTokens = () => ({
 export const getAuthState = () => {
   const { token, userToken, sellerToken, adminToken } = getStoredTokens();
 
-  // Use tokens as-is — no expiry check. The axios refresh interceptor handles 401s.
   const adminPayload  = decodeJwtPayload(adminToken);
   const sellerPayload = decodeJwtPayload(sellerToken);
   const userPayload   = decodeJwtPayload(userToken);
@@ -141,19 +136,6 @@ export const getAuthState = () => {
   return { isAuthenticated: false, role: "guest", token: "" };
 };
 
-export const clearStoredSession = () => {
-  [
-    "token", "userToken", "sellerToken", "adminToken", "refreshToken",
-    "sellerId", "pendingEmail", "currentUserEmail", "pendingAccountType",
-    "authLoginHintAccountType", "role", "accountType",
-    "seller_verification_country_id", "seller_verification_city_id",
-    "seller_verification_country_name", "seller_verification_city_name",
-    "seller_verification_store_name", "seller_verification_phone",
-    "seller_verification_description", "seller_auctions_local_cache",
-    ROLE_HINTS_KEY,
-  ].forEach(removeFromBothStorages);
-};
-
 export const getSellerVerificationAccountKey = () => {
   return String(
     readStorage("currentUserEmail") ||
@@ -167,31 +149,80 @@ export const getSellerVerificationScopedKey = (baseKey) => {
   return `${baseKey}:${getSellerVerificationAccountKey()}`;
 };
 
+// ✅ Scoped only — no global key fallback so new accounts are never falsely verified
 export const hasSellerVerifiedAccess = () => {
   if (typeof window === "undefined") return false;
+  const accountKey = getSellerVerificationAccountKey();
+  if (!accountKey || accountKey === "guest") return false;
   return (
-    localStorage.getItem("seller_verified_global") === "true" ||
-    sessionStorage.getItem("seller_verified_global") === "true" ||
-    localStorage.getItem(getSellerVerificationScopedKey("seller_verified_local")) === "true" ||
-    sessionStorage.getItem(getSellerVerificationScopedKey("seller_verified_local")) === "true"
+    localStorage.getItem(`seller_verified_local:${accountKey}`) === "true" ||
+    sessionStorage.getItem(`seller_verified_local:${accountKey}`) === "true"
   );
 };
 
+// ✅ Scoped only
+export const hasSellerSubmittedVerification = () => {
+  if (typeof window === "undefined") return false;
+  const accountKey = getSellerVerificationAccountKey();
+  if (!accountKey || accountKey === "guest") return false;
+  return (
+    localStorage.getItem(`seller_verification_submitted:${accountKey}`) === "true" ||
+    sessionStorage.getItem(`seller_verification_submitted:${accountKey}`) === "true"
+  );
+};
+
+// ✅ Does NOT dispatch any event — callers are responsible for that if needed
 export const markSellerVerifiedAccess = () => {
   if (typeof window === "undefined") return false;
   const accountKey = getSellerVerificationAccountKey();
-  const scopedVerifiedKey   = `seller_verified_local:${accountKey}`;
-  const scopedSubmittedKey  = `seller_verification_submitted:${accountKey}`;
+  if (!accountKey || accountKey === "guest") return false;
+
+  const scopedVerifiedKey  = `seller_verified_local:${accountKey}`;
+  const scopedSubmittedKey = `seller_verification_submitted:${accountKey}`;
+
   sessionStorage.setItem(scopedVerifiedKey, "true");
   localStorage.setItem(scopedVerifiedKey, "true");
   sessionStorage.setItem(scopedSubmittedKey, "true");
   localStorage.setItem(scopedSubmittedKey, "true");
-  sessionStorage.setItem("seller_verified_global", "true");
-  localStorage.setItem("seller_verified_global", "true");
-  sessionStorage.setItem("seller_verification_submitted_global", "true");
-  localStorage.setItem("seller_verification_submitted_global", "true");
   sessionStorage.setItem("role", "seller");
   sessionStorage.setItem("accountType", "seller");
-  window.dispatchEvent(new CustomEvent("seller-verification-updated"));
+
+  // ✅ No event dispatch here — prevents infinite loops in listeners
   return true;
+};
+
+export const clearStoredSession = () => {
+  const accountKey = getSellerVerificationAccountKey();
+  const keysToRemove = [
+    "token", "userToken", "sellerToken", "adminToken", "refreshToken",
+    "sellerId", "pendingEmail", "currentUserEmail", "pendingAccountType",
+    "authLoginHintAccountType", "role", "accountType",
+    // Clear old global keys in case they exist from previous sessions
+    "seller_verified_global",
+    "seller_verification_submitted_global",
+    "seller_verification_country_id", "seller_verification_city_id",
+    "seller_verification_country_name", "seller_verification_city_name",
+    "seller_verification_store_name", "seller_verification_phone",
+    "seller_verification_description", "seller_auctions_local_cache",
+    ROLE_HINTS_KEY,
+  ];
+
+  // Also clear scoped keys for the current account
+  if (accountKey && accountKey !== "guest") {
+    keysToRemove.push(`seller_verified_local:${accountKey}`);
+    keysToRemove.push(`seller_verification_submitted:${accountKey}`);
+  }
+
+  keysToRemove.forEach(removeFromBothStorages);
+};
+
+export const clearSellerVerificationFlags = () => {
+  if (typeof window === "undefined") return;
+  const accountKey = getSellerVerificationAccountKey();
+  [
+    `seller_verified_local:${accountKey}`,
+    `seller_verification_submitted:${accountKey}`,
+    "seller_verified_global",
+    "seller_verification_submitted_global",
+  ].forEach(removeFromBothStorages);
 };

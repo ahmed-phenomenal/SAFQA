@@ -61,6 +61,24 @@ export const setUnreadCount = (n) => {
 
 const skeletonRows = [1, 2, 3];
 
+const getApiErrorMessage = (err) => {
+  const statusCode = err?.response?.status;
+
+  if (statusCode === 401) {
+    return "Login expired, please login again";
+  }
+
+  if (statusCode === 403) {
+    return "You must be verified to view this section";
+  }
+
+  return (
+    err?.response?.data?.message ||
+    err?.message ||
+    "Failed to load notifications."
+  );
+};
+
 export default function Notifications() {
   const { t, i18n } = useTranslation();
   const isArabic = i18n.language === "ar";
@@ -114,7 +132,7 @@ export default function Notifications() {
       const unread = sorted.filter((n) => !n.isRead).length;
       setUnreadCount(unread);
     } catch (err) {
-      setError(err?.response?.data?.message || err?.message || "Failed to load notifications.");
+      setError(getApiErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -135,7 +153,7 @@ export default function Notifications() {
       setSelectedIds((prev) => prev.filter((i) => i !== String(id)));
       setUnreadCount(notifications.filter((n) => !n.isRead && n.id !== id).length);
     } catch (err) {
-      setError(err?.response?.data?.message || err?.message || "Failed to delete.");
+      setError(getApiErrorMessage(err));
     } finally { setDeleting(false); }
   };
 
@@ -152,7 +170,7 @@ export default function Notifications() {
       setNotifications((prev) => prev.filter((n) => !selectedIds.includes(String(n.id))));
       setSelectedIds([]);
     } catch (err) {
-      setError(err?.response?.data?.message || err?.message || "Failed to delete.");
+      setError(getApiErrorMessage(err));
     } finally { setDeleting(false); }
   };
 
@@ -241,7 +259,9 @@ export default function Notifications() {
           <div style={{
             background: "#fdecea", color: "#b3261e",
             padding: "12px 14px", borderRadius: "10px", marginBottom: "18px",
+            display: "flex", alignItems: "center", gap: "10px",
           }}>
+            <i className="fa-solid fa-circle-exclamation" />
             {error}
           </div>
         )}

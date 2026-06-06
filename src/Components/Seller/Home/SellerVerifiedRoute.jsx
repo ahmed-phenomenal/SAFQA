@@ -3,7 +3,6 @@ import { Outlet, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { getSellerVerificationStatus } from "../../../API/seller";
 import {
-  hasSellerVerifiedAccess,
   markSellerVerifiedAccess,
 } from "../../../API/authAccess";
 
@@ -45,12 +44,10 @@ export default function SellerVerifiedRoute() {
     try {
       setChecking(true);
 
-      if (hasSellerVerifiedAccess()) {
-        setAllowed(true);
-        return;
-      }
-
+      // REMOVED: hasSellerVerifiedAccess check - always get fresh from backend
       const data = await getSellerVerificationStatus();
+      
+      console.log("Verification status:", data); // For debugging
 
       if (isBackendVerified(data)) {
         markSellerVerifiedAccess();
@@ -58,8 +55,11 @@ export default function SellerVerifiedRoute() {
         return;
       }
 
+      // If seller account exists but isn't verified, don't allow access
+      // They need to go through verification
       setAllowed(false);
-    } catch {
+    } catch (error) {
+      console.error("Verification check error:", error);
       setAllowed(false);
     } finally {
       setChecking(false);

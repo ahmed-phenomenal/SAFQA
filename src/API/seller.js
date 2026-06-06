@@ -214,22 +214,23 @@ const persistSellerSession = (res) => {
   const sellerToken = extractTokenFromResponse(res);
 
   if (sellerToken) {
-    writeSession("sellerToken", sellerToken);
+    writeBoth("sellerToken", sellerToken);
   }
 
   const sellerId = persistSellerIdFromAnyData(res?.data || {});
 
   return { sellerToken, sellerId };
 };
+
 const persistSellerSessionFromToken = (token) => {
   const clean = cleanToken(token);
 
   if (clean) {
-    writeSession("sellerToken", clean);
+    writeBoth("sellerToken", clean);
   }
 
-  writeSession("role", "seller");
-  writeSession("accountType", "seller");
+  writeBoth("role", "seller");
+  writeBoth("accountType", "seller");
 
   return clean;
 };
@@ -265,171 +266,94 @@ const getLocalSubmittedState = () => {
   return readStorage(getScopedKey("seller_verification_submitted")) === "true";
 };
 
-const buildCreateSellerPayload = (payload) => {
-  const storeName = toStringValue(
-    firstDefined(readFormDataValue(payload, "StoreName"), payload?.StoreName)
-  );
-  const phoneNumber = toStringValue(
-    firstDefined(readFormDataValue(payload, "PhoneNumber"), payload?.PhoneNumber)
-  );
-  const cityId = toNumberValue(
-    firstDefined(readFormDataValue(payload, "CityId"), payload?.CityId)
-  );
-  const businessType = toNumberValue(
-    firstDefined(readFormDataValue(payload, "BusinessType"), payload?.BusinessType)
-  );
-  const description = toStringValue(
-    firstDefined(readFormDataValue(payload, "Description"), payload?.Description)
-  );
-  const logo = firstDefined(readFormDataValue(payload, "Logo"), payload?.Logo);
-
-  return {
-    storeName,
-    phoneNumber,
-    cityId,
-    businessType,
-    description,
-    logo,
-  };
+const normalizeListResponse = (resData) => {
+  if (Array.isArray(resData)) return resData;
+  if (Array.isArray(resData?.data)) return resData.data;
+  if (Array.isArray(resData?.Data)) return resData.Data;
+  if (Array.isArray(resData?.result)) return resData.result;
+  if (Array.isArray(resData?.items)) return resData.items;
+  if (Array.isArray(resData?.value)) return resData.value;
+  return [];
 };
 
-const buildBusinessPayload = (payload) => {
-  const commercialRegister = firstDefined(
-    readFormDataValue(payload, "CommercialRegister"),
-    payload?.CommercialRegister
-  );
-  const taxId = firstDefined(readFormDataValue(payload, "TaxId"), payload?.TaxId);
-  const ownerNationalIdFront = firstDefined(
-    readFormDataValue(payload, "OwnerNationalIdFront"),
-    payload?.OwnerNationalIdFront
-  );
-  const ownerNationalIdBack = firstDefined(
-    readFormDataValue(payload, "OwnerNationalIdBack"),
-    payload?.OwnerNationalIdBack
-  );
-  const instaPayNumber = toStringValue(
+const normalizeCountryItem = (item) => ({
+  id: Number(
     firstDefined(
-      readFormDataValue(payload, "instaPayNumber"),
-      payload?.instaPayNumber
-    )
-  ).replace(/\D/g, "");
-  const bankName = toStringValue(
-    firstDefined(readFormDataValue(payload, "BankName"), payload?.BankName)
-  );
-  const accountName = toStringValue(
-    firstDefined(readFormDataValue(payload, "AccountName"), payload?.AccountName)
-  );
-  const iban = toStringValue(
-    firstDefined(readFormDataValue(payload, "IBAN"), payload?.IBAN)
-  );
-  const localAccountNumber = toStringValue(
+      item?.id,
+      item?.countryId,
+      item?.CountryId,
+      item?.value,
+      item?.Id
+    ) || 0
+  ),
+  name: toStringValue(
     firstDefined(
-      readFormDataValue(payload, "LocalAccountNumber"),
-      payload?.LocalAccountNumber
+      item?.name,
+      item?.countryName,
+      item?.CountryName,
+      item?.label,
+      item?.Name
     )
-  ).replace(/\D/g, "");
+  ),
+});
 
-  return {
-    commercialRegister,
-    taxId,
-    ownerNationalIdFront,
-    ownerNationalIdBack,
-    instaPayNumber,
-    bankName,
-    accountName,
-    iban,
-    localAccountNumber,
-  };
+const normalizeCityItem = (item) => ({
+  id: Number(
+    firstDefined(item?.id, item?.cityId, item?.CityId, item?.value, item?.Id) || 0
+  ),
+  name: toStringValue(
+    firstDefined(item?.name, item?.cityName, item?.CityName, item?.label, item?.Name)
+  ),
+  countryId: Number(
+    firstDefined(item?.countryId, item?.CountryId, item?.parentId, item?.ParentId) ||
+      0
+  ),
+});
+
+const normalizeExpiryDate = (value) => {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 4);
+  if (digits.length < 4) return String(value || "").trim();
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}`;
 };
 
-const buildPersonalFormData = (payload) => {
-  const formData = new FormData();
+const normalizeVerificationStatus = (raw) => {
+  const value = String(raw || "").trim().toLowerCase();
 
-  const nationalIdFront = firstDefined(
-    readFormDataValue(payload, "NationalIdFront"),
-    payload?.NationalIdFront
-  );
-  const nationalIdBack = firstDefined(
-    readFormDataValue(payload, "NationalIdBack"),
-    payload?.NationalIdBack
-  );
-  const selfieWithId = firstDefined(
-    readFormDataValue(payload, "SelfieWithId"),
-    payload?.SelfieWithId
-  );
+  if (!value) return "";
 
-  appendIfHasValue(formData, "NationalIdFront", nationalIdFront);
-  appendIfHasValue(formData, "NationalIdBack", nationalIdBack);
-  appendIfHasValue(formData, "SelfieWithId", selfieWithId);
+  if (
+    value.includes("approved") ||
+    value.includes("verified") ||
+    value.includes("accepted")
+  ) {
+    return "verified";
+  }
 
-  return formData;
-};
+  if (
+    value.includes("pending") ||
+    value.includes("under review") ||
+    value.includes("submitted") ||
+    value.includes("processing") ||
+    value.includes("review")
+  ) {
+    return "pending";
+  }
 
-const buildCreateSellerSwaggerBody = (logo) => {
-  const formData = new FormData();
-  appendIfHasValue(formData, "Logo", logo);
-  return formData;
-};
+  if (
+    value.includes("rejected") ||
+    value.includes("declined") ||
+    value.includes("failed")
+  ) {
+    return "rejected";
+  }
 
-const buildCreateSellerFallbackBody = ({
-  storeName,
-  phoneNumber,
-  cityId,
-  businessType,
-  description,
-  logo,
-}) => {
-  const formData = new FormData();
-  appendIfHasValue(formData, "StoreName", storeName);
-  appendIfHasValue(formData, "PhoneNumber", phoneNumber);
-  appendIfHasValue(formData, "CityId", cityId);
-  appendIfHasValue(formData, "BusinessType", businessType);
-  appendIfHasValue(formData, "Description", description);
-  appendIfHasValue(formData, "Logo", logo);
-  return formData;
-};
-
-const buildBusinessFilesForm = ({
-  commercialRegister,
-  taxId,
-  ownerNationalIdFront,
-  ownerNationalIdBack,
-}) => {
-  const formData = new FormData();
-  appendIfHasValue(formData, "CommercialRegister", commercialRegister);
-  appendIfHasValue(formData, "TaxId", taxId);
-  appendIfHasValue(formData, "OwnerNationalIdFront", ownerNationalIdFront);
-  appendIfHasValue(formData, "OwnerNationalIdBack", ownerNationalIdBack);
-  return formData;
-};
-
-const buildBusinessFullForm = ({
-  commercialRegister,
-  taxId,
-  ownerNationalIdFront,
-  ownerNationalIdBack,
-  instaPayNumber,
-  bankName,
-  accountName,
-  iban,
-  localAccountNumber,
-}) => {
-  const formData = new FormData();
-  appendIfHasValue(formData, "CommercialRegister", commercialRegister);
-  appendIfHasValue(formData, "TaxId", taxId);
-  appendIfHasValue(formData, "OwnerNationalIdFront", ownerNationalIdFront);
-  appendIfHasValue(formData, "OwnerNationalIdBack", ownerNationalIdBack);
-  appendIfHasValue(formData, "instaPayNumber", instaPayNumber);
-  appendIfHasValue(formData, "BankName", bankName);
-  appendIfHasValue(formData, "AccountName", accountName);
-  appendIfHasValue(formData, "IBAN", iban);
-  appendIfHasValue(formData, "LocalAccountNumber", localAccountNumber);
-  return formData;
+  return value;
 };
 
 /**
- * Important:
- * after CreateSeller, if backend returns sellerToken, step 2/3 must prefer it first.
+ * Always re-reads tokens from storage at call time.
+ * This is critical: after createSeller persists a sellerToken,
+ * subsequent calls must pick it up fresh.
  */
 const getVerificationFlowTokens = () => {
   const tokens = [
@@ -440,72 +364,6 @@ const getVerificationFlowTokens = () => {
   ].filter(Boolean);
 
   return [...new Set(tokens)];
-};
-
-const getApiErrorMessage = (error) =>
-  String(
-    error?.response?.data?.message ||
-      error?.response?.data?.Message ||
-      error?.message ||
-      ""
-  )
-    .trim()
-    .toLowerCase();
-
-const isAlreadyExistsLikeMessage = (message) => {
-  const msg = String(message || "").trim().toLowerCase();
-
-  return (
-    msg.includes("already exists") ||
-    msg.includes("already exist") ||
-    msg.includes("already uploaded") ||
-    msg.includes("documents already uploaded") ||
-    msg.includes("already verified") ||
-    msg.includes("already submitted") ||
-    msg.includes("already completed") ||
-    msg.includes("already created") ||
-    msg.includes("already done") ||
-    msg.includes("duplicate") ||
-    msg.includes("conflict")
-  );
-};
-
-const buildAlreadyExistsResponse = (error, defaultMessage) => {
-  const data = error?.response?.data || {};
-  persistSellerIdFromAnyData(data);
-
-  return {
-    ...data,
-    alreadyExists: true,
-    isSuccess: true,
-    message: data?.message || data?.Message || defaultMessage,
-  };
-};
-
-const requestSellerGetWithFallback = async (url, options = {}) => {
-  const tokens = getVerificationFlowTokens();
-  let lastError = null;
-
-  for (const token of tokens) {
-    try {
-      const res = await sellerApi.get(url, {
-        ...options,
-        headers: {
-          ...(options.headers || {}),
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      return res;
-    } catch (error) {
-      lastError = error;
-      const status = Number(error?.response?.status || 0);
-      if (status !== 401 && status !== 403 && status !== 404) {
-        throw error;
-      }
-    }
-  }
-
-  throw lastError || new Error("Request failed");
 };
 
 const safeJsonParse = (value, fallback = null) => {
@@ -642,92 +500,30 @@ const fileToBase64 = (file) =>
     reader.readAsDataURL(file);
   });
 
-const normalizeListResponse = (resData) => {
-  if (Array.isArray(resData)) return resData;
-  if (Array.isArray(resData?.data)) return resData.data;
-  if (Array.isArray(resData?.Data)) return resData.Data;
-  if (Array.isArray(resData?.result)) return resData.result;
-  if (Array.isArray(resData?.items)) return resData.items;
-  if (Array.isArray(resData?.value)) return resData.value;
-  return [];
-};
+const requestSellerGetWithFallback = async (url, options = {}) => {
+  const tokens = getVerificationFlowTokens();
+  let lastError = null;
 
-const normalizeCountryItem = (item) => ({
-  id: Number(
-    firstDefined(
-      item?.id,
-      item?.countryId,
-      item?.CountryId,
-      item?.value,
-      item?.Id
-    ) || 0
-  ),
-  name: toStringValue(
-    firstDefined(
-      item?.name,
-      item?.countryName,
-      item?.CountryName,
-      item?.label,
-      item?.Name
-    )
-  ),
-});
-
-const normalizeCityItem = (item) => ({
-  id: Number(
-    firstDefined(item?.id, item?.cityId, item?.CityId, item?.value, item?.Id) || 0
-  ),
-  name: toStringValue(
-    firstDefined(item?.name, item?.cityName, item?.CityName, item?.label, item?.Name)
-  ),
-  countryId: Number(
-    firstDefined(item?.countryId, item?.CountryId, item?.parentId, item?.ParentId) ||
-      0
-  ),
-});
-
-const normalizeExpiryDate = (value) => {
-  const digits = String(value || "").replace(/\D/g, "").slice(0, 4);
-  if (digits.length < 4) return String(value || "").trim();
-  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}`;
-};
-
-const normalizeVerificationStatus = (raw) => {
-  const value = String(raw || "").trim().toLowerCase();
-
-  if (!value) return "";
-
-  // IMPORTANT:
-  // Do NOT treat boolean-like values such as "true" or "1" as verified.
-  // Some seller APIs use true/1/active only to mean the seller account exists/is active,
-  // not that admin approved the full verification documents.
-  if (
-    value.includes("approved") ||
-    value.includes("verified") ||
-    value.includes("accepted")
-  ) {
-    return "verified";
+  for (const token of tokens) {
+    try {
+      const res = await sellerApi.get(url, {
+        ...options,
+        headers: {
+          ...(options.headers || {}),
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      return res;
+    } catch (error) {
+      lastError = error;
+      const status = Number(error?.response?.status || 0);
+      if (status !== 401 && status !== 403 && status !== 404) {
+        throw error;
+      }
+    }
   }
 
-  if (
-    value.includes("pending") ||
-    value.includes("under review") ||
-    value.includes("submitted") ||
-    value.includes("processing") ||
-    value.includes("review")
-  ) {
-    return "pending";
-  }
-
-  if (
-    value.includes("rejected") ||
-    value.includes("declined") ||
-    value.includes("failed")
-  ) {
-    return "rejected";
-  }
-
-  return value;
+  throw lastError || new Error("Request failed");
 };
 
 export const validateCardExpiry = (value) => {
@@ -753,6 +549,11 @@ export const validateCardExpiry = (value) => {
   return "";
 };
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   createSeller
+   Swagger: query params = StoreName, PhoneNumber, CityId, BusinessType, Description
+            body multipart/form-data = Logo (binary)
+───────────────────────────────────────────────────────────────────────────── */
 export const createSeller = async (payload) => {
   const primaryToken = getCreateSellerPreferredToken();
 
@@ -760,16 +561,28 @@ export const createSeller = async (payload) => {
     throw new Error("Missing authentication token. Please login again.");
   }
 
-  const { storeName, phoneNumber, cityId, businessType, description, logo } =
-    buildCreateSellerPayload(payload);
+  const storeName = toStringValue(
+    firstDefined(readFormDataValue(payload, "StoreName"), payload?.StoreName)
+  );
+  const phoneNumber = toStringValue(
+    firstDefined(readFormDataValue(payload, "PhoneNumber"), payload?.PhoneNumber)
+  );
+  const cityId = toNumberValue(
+    firstDefined(readFormDataValue(payload, "CityId"), payload?.CityId)
+  );
+  const businessType = toNumberValue(
+    firstDefined(readFormDataValue(payload, "BusinessType"), payload?.BusinessType)
+  );
+  const description = toStringValue(
+    firstDefined(readFormDataValue(payload, "Description"), payload?.Description)
+  );
+  const logo = firstDefined(readFormDataValue(payload, "Logo"), payload?.Logo);
 
   const uniqueTokens = [
     ...new Set(
       [primaryToken, ...getVerificationFlowTokens()].map(cleanToken).filter(Boolean)
     ),
   ];
-
-  let lastError = null;
 
   const queryParams = {
     StoreName: storeName,
@@ -779,12 +592,16 @@ export const createSeller = async (payload) => {
     Description: description,
   };
 
+  let lastError = null;
+
   for (let i = 0; i < uniqueTokens.length; i += 1) {
     const token = uniqueTokens[i];
 
     try {
       const formData = new FormData();
-      appendIfHasValue(formData, "Logo", logo);
+      if (logo) {
+        formData.append("Logo", logo);
+      }
 
       const res = await sellerApi.post("/seller/CreateSeller", formData, {
         params: queryParams,
@@ -793,6 +610,9 @@ export const createSeller = async (payload) => {
         },
       });
 
+      // Persist the session — this writes sellerToken to storage so
+      // subsequent steps (personalVerification, businessVerification)
+      // will pick it up when they call getVerificationFlowTokens() fresh.
       persistSellerSession(res);
       persistSellerSessionFromToken(token);
 
@@ -826,6 +646,8 @@ export const createSeller = async (payload) => {
         msg.includes("already created")
       ) {
         persistSellerIdFromAnyData(data);
+        // On 409 we still persist the token that worked so downstream steps
+        // can use it.
         persistSellerSessionFromToken(token);
 
         return {
@@ -847,7 +669,14 @@ export const createSeller = async (payload) => {
   throw lastError || new Error("Create seller failed");
 };
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   personalVerification
+   NOTE: Tokens are re-read from storage here so the sellerToken written by
+   createSeller is always included, even though this function is called right
+   after createSeller in the same submission flow.
+───────────────────────────────────────────────────────────────────────────── */
 export const personalVerification = async (payload) => {
+  // Re-read tokens FRESH — createSeller may have just written a new sellerToken
   const tokens = getVerificationFlowTokens();
 
   if (!tokens.length) {
@@ -862,27 +691,23 @@ export const personalVerification = async (payload) => {
 
     try {
       const formData = new FormData();
-      formData.append(
-        "NationalIdFront",
-        firstDefined(
-          readFormDataValue(payload, "NationalIdFront"),
-          payload?.NationalIdFront
-        )
+
+      const nationalIdFront = firstDefined(
+        readFormDataValue(payload, "NationalIdFront"),
+        payload?.NationalIdFront
       );
-      formData.append(
-        "NationalIdBack",
-        firstDefined(
-          readFormDataValue(payload, "NationalIdBack"),
-          payload?.NationalIdBack
-        )
+      const nationalIdBack = firstDefined(
+        readFormDataValue(payload, "NationalIdBack"),
+        payload?.NationalIdBack
       );
-      formData.append(
-        "SelfieWithId",
-        firstDefined(
-          readFormDataValue(payload, "SelfieWithId"),
-          payload?.SelfieWithId
-        )
+      const selfieWithId = firstDefined(
+        readFormDataValue(payload, "SelfieWithId"),
+        payload?.SelfieWithId
       );
+
+      if (nationalIdFront) formData.append("NationalIdFront", nationalIdFront);
+      if (nationalIdBack) formData.append("NationalIdBack", nationalIdBack);
+      if (selfieWithId) formData.append("SelfieWithId", selfieWithId);
 
       const res = await sellerApi.post("/seller/personal-verification", formData, {
         headers: {
@@ -934,24 +759,85 @@ export const personalVerification = async (payload) => {
   throw lastError || new Error("Personal verification failed");
 };
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   businessVerification
+   NOTE: Tokens are re-read from storage here so the sellerToken written by
+   createSeller / personalVerification is always included.
+───────────────────────────────────────────────────────────────────────────── */
 export const businessVerification = async (payload) => {
+  // Re-read tokens FRESH
   const tokens = getVerificationFlowTokens();
 
   if (!tokens.length) {
     throw new Error("Authentication token not found. Please login again.");
   }
 
-  const {
-    commercialRegister,
-    taxId,
-    ownerNationalIdFront,
-    ownerNationalIdBack,
-    instaPayNumber,
-    bankName,
-    accountName,
-    iban,
-    localAccountNumber,
-  } = buildBusinessPayload(payload);
+  const commercialRegister = firstDefined(
+    readFormDataValue(payload, "CommercialRegister"),
+    payload?.CommercialRegister
+  );
+  const taxId = firstDefined(
+    readFormDataValue(payload, "TaxId"),
+    payload?.TaxId
+  );
+  const ownerNationalIdFront = firstDefined(
+    readFormDataValue(payload, "OwnerNationalIdFront"),
+    payload?.OwnerNationalIdFront
+  );
+  const ownerNationalIdBack = firstDefined(
+    readFormDataValue(payload, "OwnerNationalIdBack"),
+    payload?.OwnerNationalIdBack
+  );
+
+  const rawInstaPay = toStringValue(
+    firstDefined(
+      readFormDataValue(payload, "instaPayNumber"),
+      payload?.instaPayNumber
+    )
+  ).replace(/\D/g, "");
+
+  const bankName = toStringValue(
+    firstDefined(readFormDataValue(payload, "BankName"), payload?.BankName)
+  );
+  const accountName = toStringValue(
+    firstDefined(readFormDataValue(payload, "AccountName"), payload?.AccountName)
+  );
+  const iban = toStringValue(
+    firstDefined(readFormDataValue(payload, "IBAN"), payload?.IBAN)
+  );
+  const localAccountNumber = toStringValue(
+    firstDefined(
+      readFormDataValue(payload, "LocalAccountNumber"),
+      payload?.LocalAccountNumber
+    )
+  ).replace(/\D/g, "");
+
+  let instaPayNumber = null;
+  if (rawInstaPay) {
+    const numeric = Number(rawInstaPay);
+    if (!Number.isFinite(numeric) || numeric > 2147483647) {
+      throw new Error(
+        "InstaPay number must be digits only and less than or equal to 2147483647."
+      );
+    }
+    instaPayNumber = numeric;
+  }
+
+  const queryParams = {};
+  if (instaPayNumber !== null) queryParams.instaPayNumber = instaPayNumber;
+  if (bankName) queryParams.BankName = bankName;
+  if (accountName) queryParams.AccountName = accountName;
+  if (iban) queryParams.IBAN = iban;
+  if (localAccountNumber) queryParams.LocalAccountNumber = localAccountNumber;
+
+  const buildFormData = () => {
+    const formData = new FormData();
+    if (commercialRegister) formData.append("CommercialRegister", commercialRegister);
+    if (taxId) formData.append("TaxId", taxId);
+    if (ownerNationalIdFront) formData.append("OwnerNationalIdFront", ownerNationalIdFront);
+    if (ownerNationalIdBack) formData.append("OwnerNationalIdBack", ownerNationalIdBack);
+    return formData;
+  };
 
   let lastError = null;
 
@@ -959,123 +845,62 @@ export const businessVerification = async (payload) => {
     const token = cleanToken(tokens[i]);
     if (!token) continue;
 
-    const attempts = [
-      () => {
-        const formData = new FormData();
-        appendIfHasValue(formData, "CommercialRegister", commercialRegister);
-        appendIfHasValue(formData, "TaxId", taxId);
-        appendIfHasValue(formData, "OwnerNationalIdFront", ownerNationalIdFront);
-        appendIfHasValue(formData, "OwnerNationalIdBack", ownerNationalIdBack);
-
-        if (instaPayNumber) {
-          const numeric = Number(instaPayNumber);
-          if (!Number.isFinite(numeric) || numeric > 2147483647) {
-            throw new Error(
-              "InstaPay number must be digits only and less than or equal to 2147483647."
-            );
-          }
-          formData.append("instaPayNumber", String(numeric));
-        }
-
-        appendIfHasValue(formData, "BankName", bankName);
-        appendIfHasValue(formData, "AccountName", accountName);
-        appendIfHasValue(formData, "IBAN", iban);
-        appendIfHasValue(formData, "LocalAccountNumber", localAccountNumber);
-
-        return sellerApi.post("/seller/business-verification", formData, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-      },
-
-      () => {
-        const queryParams = {};
-
-        if (instaPayNumber) {
-          const numeric = Number(instaPayNumber);
-          if (!Number.isFinite(numeric) || numeric > 2147483647) {
-            throw new Error(
-              "InstaPay number must be digits only and less than or equal to 2147483647."
-            );
-          }
-          queryParams.instaPayNumber = numeric;
-        }
-
-        if (bankName) queryParams.BankName = bankName;
-        if (accountName) queryParams.AccountName = accountName;
-        if (iban) queryParams.IBAN = iban;
-        if (localAccountNumber) queryParams.LocalAccountNumber = localAccountNumber;
-
-        const formData = new FormData();
-        appendIfHasValue(formData, "CommercialRegister", commercialRegister);
-        appendIfHasValue(formData, "TaxId", taxId);
-        appendIfHasValue(formData, "OwnerNationalIdFront", ownerNationalIdFront);
-        appendIfHasValue(formData, "OwnerNationalIdBack", ownerNationalIdBack);
-
-        return sellerApi.post("/seller/business-verification", formData, {
+    try {
+      const res = await sellerApi.post(
+        "/seller/business-verification",
+        buildFormData(),
+        {
           params: queryParams,
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        });
-      },
-    ];
+        }
+      );
 
-    for (let j = 0; j < attempts.length; j += 1) {
-      try {
-        const res = await attempts[j]();
+      persistSellerSession(res);
+      persistSellerSessionFromToken(token);
+      writeBoth("role", "seller");
+      writeBoth("accountType", "seller");
+      setLocalSubmittedState(true);
 
-        persistSellerSession(res);
-        persistSellerSessionFromToken(token);
-        writeSession("role", "seller");
-        writeSession("accountType", "seller");
+      return {
+        ...(res?.data || {}),
+        alreadyExists: false,
+        isSuccess: true,
+      };
+    } catch (error) {
+      lastError = error;
+      const status = Number(error?.response?.status || 0);
+      const msg = String(
+        error?.response?.data?.message ||
+          error?.response?.data?.Message ||
+          ""
+      ).toLowerCase();
+
+      if (
+        status === 409 ||
+        msg.includes("already exists") ||
+        msg.includes("already uploaded") ||
+        msg.includes("already verified") ||
+        msg.includes("already submitted")
+      ) {
+        writeBoth("role", "seller");
+        writeBoth("accountType", "seller");
         setLocalSubmittedState(true);
 
         return {
-          ...(res?.data || {}),
-          alreadyExists: false,
+          ...(error?.response?.data || {}),
+          alreadyExists: true,
           isSuccess: true,
-        };
-      } catch (error) {
-        lastError = error;
-        const status = Number(error?.response?.status || 0);
-        const msg = String(
-          error?.response?.data?.message ||
+          message:
+            error?.response?.data?.message ||
             error?.response?.data?.Message ||
-            ""
-        ).toLowerCase();
+            "Business verification already uploaded.",
+        };
+      }
 
-        if (
-          status === 409 ||
-          msg.includes("already exists") ||
-          msg.includes("already uploaded") ||
-          msg.includes("already verified") ||
-          msg.includes("already submitted")
-        ) {
-          writeSession("role", "seller");
-          writeSession("accountType", "seller");
-          setLocalSubmittedState(true);
-
-          return {
-            ...(error?.response?.data || {}),
-            alreadyExists: true,
-            isSuccess: true,
-            message:
-              error?.response?.data?.message ||
-              error?.response?.data?.Message ||
-              "Business verification already uploaded.",
-          };
-        }
-
-        const canTryNextShape =
-          !status || [400, 404, 405, 415, 422, 500].includes(status);
-
-        if (!canTryNextShape || j === attempts.length - 1) {
-          if (status !== 401 || i === tokens.length - 1) {
-            throw error;
-          }
-        }
+      if (status !== 401 || i === tokens.length - 1) {
+        throw error;
       }
     }
   }
@@ -1507,10 +1332,7 @@ export const getSellerVerificationStatus = async () => {
 
     const sellerCreated = sellerId > 0;
 
-    // Only admin-approved/verified status means verified.
-    // Existing seller account, active account, true/1 flags, or uploaded step-1 info are NOT verified.
     const isVerified = rawVerificationStatus === "verified";
-
     const isRejected = rawVerificationStatus === "rejected";
 
     const isPending =
@@ -1519,8 +1341,7 @@ export const getSellerVerificationStatus = async () => {
       (rawVerificationStatus === "pending" ||
         explicitSubmitted ||
         explicitPersonalVerified ||
-        explicitBusinessVerified ||
-        getLocalSubmittedState());
+        explicitBusinessVerified);
 
     if (isVerified) {
       setLocalVerifiedState(true);
@@ -1530,6 +1351,7 @@ export const getSellerVerificationStatus = async () => {
       setLocalSubmittedState(true);
     } else {
       setLocalVerifiedState(false);
+      setLocalSubmittedState(false);
     }
 
     return {
@@ -1548,20 +1370,20 @@ export const getSellerVerificationStatus = async () => {
         homeData: homeRoot || null,
       },
     };
-  } catch {
-    const localSubmitted = getLocalSubmittedState();
+  } catch (error) {
+    console.error("Error fetching seller verification status:", error);
     const localSellerId = Number(readStorage(getScopedKey("sellerId")) || 0);
 
     return {
       isVerified: false,
-      isPending: localSubmitted,
+      isPending: false,
       isRejected: false,
-      hasSubmittedVerification: localSubmitted,
+      hasSubmittedVerification: false,
       personalVerified: false,
       businessVerified: false,
       sellerCreated: localSellerId > 0,
       sellerId: localSellerId,
-      verificationStatus: localSubmitted ? "pending" : "",
+      verificationStatus: "",
       homeData: null,
       raw: null,
     };

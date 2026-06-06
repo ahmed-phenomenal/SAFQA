@@ -13,13 +13,14 @@ import {
   getCountries,
   getCitiesByCountryId,
 } from "../../../API/seller";
+import { getNotifications } from "../../../API/Seller_Notifications";
 
 const ALLOWED_IMAGE_FILE_TYPES = ["image/png", "image/jpeg", "image/jpg"];
 const MAX_FILE_SIZE_MB = 5;
 const DEFAULT_BUSINESS_TYPE = 2;
 const MAX_INT_32 = 2147483647;
-const DRAFT_TTL_MS = 30 * 60 * 1000;
 
+/* ─── Account-scoped draft key helpers ──────────────────────────── */
 const getCurrentAccountKey = () => {
   return String(
     localStorage.getItem("currentUserEmail") ||
@@ -42,6 +43,126 @@ const isValidPhoneNumber = (value) => {
   return digits.length >= 8 && digits.length <= 15;
 };
 
+/* ─── Draft helpers ─────────────────────────────────────────────── */
+const saveDraft = (draft) => {
+  try {
+    localStorage.setItem(
+      getScopedDraftKey("payload"),
+      JSON.stringify({ draft })
+    );
+  } catch {
+    //
+  }
+};
+
+const readDraft = () => {
+  try {
+    const raw = localStorage.getItem(getScopedDraftKey("payload"));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed.draft || null;
+  } catch {
+    return null;
+  }
+};
+
+const clearDraft = () => {
+  try {
+    localStorage.removeItem(getScopedDraftKey("payload"));
+  } catch {
+    //
+  }
+};
+
+/* ─── File → base64 data URL ────────────────────────────────────── */
+const fileToBase64 = (file) =>
+  new Promise((resolve, reject) => {
+    if (!file) { resolve(null); return; }
+    if (typeof file === "string") { resolve(file); return; }
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
+
+/* ─── base64 data URL → File object ────────────────────────────── */
+const base64ToFile = (dataUrl, filename) => {
+  try {
+    if (!dataUrl || typeof dataUrl !== "string") return null;
+    const [header, data] = dataUrl.split(",");
+    if (!data) return null;
+    const mime = header.match(/:(.*?);/)?.[1] || "image/png";
+    const binary = atob(data);
+    const array = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
+    return new File([array], filename, { type: mime });
+  } catch {
+    return null;
+  }
+};
+
+/* ─── File storage helpers ──────────────────────────────────────── */
+const saveFileToStorage = async (key, file) => {
+  if (!file) return;
+  try {
+    const b64 = await fileToBase64(file);
+    if (b64) localStorage.setItem(getScopedDraftKey(key), b64);
+  } catch {
+    //
+  }
+};
+
+const loadFileFromStorage = (key, filename) => {
+  try {
+    const b64 = localStorage.getItem(getScopedDraftKey(key));
+    if (!b64) return null;
+    return base64ToFile(b64, filename);
+  } catch {
+    return null;
+  }
+};
+
+const clearFileFromStorage = (key) => {
+  try {
+    localStorage.removeItem(getScopedDraftKey(key));
+  } catch {
+    //
+  }
+};
+
+const FILE_KEYS = {
+  sellerLogo: "file_sellerLogo",
+  nationalIdFront: "file_nationalIdFront",
+  nationalIdBack: "file_nationalIdBack",
+  selfieWithId: "file_selfieWithId",
+  commercialRegistration: "file_commercialRegistration",
+  taxId: "file_taxId",
+  ownerNationalIdFront: "file_ownerNationalIdFront",
+  ownerNationalIdBack: "file_ownerNationalIdBack",
+};
+
+const clearAllFilesFromStorage = () => {
+  Object.values(FILE_KEYS).forEach(clearFileFromStorage);
+};
+
+/* ─── Notifications gate ─────────────────────────────────────────
+   Same logic as SellerProfile: 200 = verified, 403/401 = not verified.
+   Any other error (network etc.) → assume not verified so we don't
+   accidentally block a real first-time submission.
+─────────────────────────────────────────────────────────────────── */
+const checkIsVerifiedViaNotifications = async () => {
+  try {
+    await getNotifications();
+    return true; // 200 → verified
+  } catch (err) {
+    const status = Number(err?.response?.status || 0);
+    if (status === 403 || status === 401) return false; // explicitly not verified
+    // Network/server error → don't treat as verified, let submission proceed
+    return false;
+  }
+};
+
+/* ─── looksSuccessful helper ────────────────────────────────────── */
 const looksSuccessful = (data) => {
   const raw =
     data?.isSuccess ??
@@ -56,60 +177,15 @@ const looksSuccessful = (data) => {
   if (typeof raw === "string") {
     const normalized = raw.trim().toLowerCase();
     if (
-      [
-        "ok",
-        "success",
-        "done",
-        "completed",
-        "created",
-        "accepted",
-        "submitted",
-      ].includes(normalized)
+      ["ok", "success", "done", "completed", "created", "accepted", "submitted"].includes(
+        normalized
+      )
     ) {
       return true;
     }
   }
 
   return false;
-};
-
-const saveDraft = (draft) => {
-  try {
-    localStorage.setItem(
-      getScopedDraftKey("payload"),
-      JSON.stringify({
-        expiresAt: Date.now() + DRAFT_TTL_MS,
-        draft,
-      })
-    );
-  } catch {
-    //
-  }
-};
-
-const readDraft = () => {
-  try {
-    const raw = localStorage.getItem(getScopedDraftKey("payload"));
-    if (!raw) return null;
-
-    const parsed = JSON.parse(raw);
-    if (!parsed?.expiresAt || Date.now() > parsed.expiresAt) {
-      localStorage.removeItem(getScopedDraftKey("payload"));
-      return null;
-    }
-
-    return parsed.draft || null;
-  } catch {
-    return null;
-  }
-};
-
-const clearDraft = () => {
-  try {
-    localStorage.removeItem(getScopedDraftKey("payload"));
-  } catch {
-    //
-  }
 };
 
 export default function Verification() {
@@ -135,21 +211,19 @@ export default function Verification() {
   const [countriesLoading, setCountriesLoading] = useState(false);
   const [citiesLoading, setCitiesLoading] = useState(false);
 
-  const { translatedData: translatedCountries } =
-    useTranslatedApiData(countries);
+  const { translatedData: translatedCountries } = useTranslatedApiData(countries);
   const { translatedData: translatedCities } = useTranslatedApiData(cities);
 
   const displayCountries = Array.isArray(translatedCountries)
     ? translatedCountries
     : countries;
-  const displayCities = Array.isArray(translatedCities)
-    ? translatedCities
-    : cities;
+  const displayCities = Array.isArray(translatedCities) ? translatedCities : cities;
 
   const [currentStep, setCurrentStep] = useState(
     Number(cachedDraft?.currentStep || 0)
   );
 
+  /* ─── Form state ─── */
   const [formData, setFormData] = useState({
     sellerName: cachedDraft?.sellerName || "",
     sellerNumber: cachedDraft?.sellerNumber || "",
@@ -158,13 +232,10 @@ export default function Verification() {
     sellerCity: cachedDraft?.sellerCity || "",
     sellerCityId: cachedDraft?.sellerCityId || "",
     sellerLogo: null,
-
     sellerDescription: cachedDraft?.sellerDescription || "",
-
     nationalIdFront: null,
     nationalIdBack: null,
     selfieWithId: null,
-
     commercialRegistration: null,
     taxId: null,
     ownerNationalIdFront: null,
@@ -175,6 +246,18 @@ export default function Verification() {
     iban: cachedDraft?.iban || "",
     localAccountNumber: cachedDraft?.localAccountNumber || "",
   });
+
+  /* ─── Restore saved files on mount ─── */
+  useEffect(() => {
+    const restored = {};
+    for (const [field, storageKey] of Object.entries(FILE_KEYS)) {
+      const file = loadFileFromStorage(storageKey, field);
+      if (file) restored[field] = file;
+    }
+    if (Object.keys(restored).length > 0) {
+      setFormData((prev) => ({ ...prev, ...restored }));
+    }
+  }, []);
 
   const [errors, setErrors] = useState({});
 
@@ -187,6 +270,7 @@ export default function Verification() {
     [t]
   );
 
+  /* ─── Friendly API error messages ─── */
   const getFriendlyApiError = (error, fallbackMessage) => {
     const status = Number(error?.response?.status || 0);
     const backendMessage =
@@ -203,12 +287,17 @@ export default function Verification() {
       /^something went wrong$/i.test(message);
 
     if (status === 401) return t("sessionExpired");
-    if (status === 403) return t("backendRejectedStep");
+
+    if (status === 403) {
+      if (message && !looksLikeRawStatus) return message;
+      return fallbackMessage;
+    }
 
     if (status === 409) {
-      if (currentStep === 0) return t("sellerInfoSaved");
-      if (currentStep === 1) return t("identityUploaded");
-      if (currentStep === 2) return t("businessSubmitted");
+      const stepFailed = error?.__step ?? currentStep;
+      if (stepFailed === 0) return t("sellerInfoSaved");
+      if (stepFailed === 1) return t("identityUploaded");
+      if (stepFailed === 2) return t("businessSubmitted");
       return message || t("stepAlreadyExists");
     }
 
@@ -234,7 +323,6 @@ export default function Verification() {
         link.href = iconUrl;
       }
     };
-
     updateFavicon(favicon);
   }, [favicon]);
 
@@ -246,6 +334,7 @@ export default function Verification() {
     }
   }, [pageMode]);
 
+  /* ─── Save text/scalar draft on change ─── */
   useEffect(() => {
     saveDraft({
       currentStep,
@@ -264,6 +353,7 @@ export default function Verification() {
     });
   }, [formData, currentStep]);
 
+  /* ─── Load countries on mount ─── */
   useEffect(() => {
     const loadCountries = async () => {
       try {
@@ -271,12 +361,10 @@ export default function Verification() {
         const data = await getCountries();
         const normalized = Array.isArray(data) ? data : [];
         setCountries(normalized);
-
         if (formData.sellerCountryId) {
           const selectedCountry = normalized.find(
             (item) => String(item.id) === String(formData.sellerCountryId)
           );
-
           if (selectedCountry) {
             setFormData((prev) => ({
               ...prev,
@@ -290,31 +378,24 @@ export default function Verification() {
         setCountriesLoading(false);
       }
     };
-
     loadCountries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /* ─── Load cities when country changes ─── */
   useEffect(() => {
     const loadCities = async () => {
       const countryId = Number(formData.sellerCountryId || 0);
-
-      if (!countryId) {
-        setCities([]);
-        return;
-      }
-
+      if (!countryId) { setCities([]); return; }
       try {
         setCitiesLoading(true);
         const data = await getCitiesByCountryId(countryId);
         const normalized = Array.isArray(data) ? data : [];
         setCities(normalized);
-
         if (formData.sellerCityId) {
           const selectedCity = normalized.find(
             (item) => String(item.id) === String(formData.sellerCityId)
           );
-
           if (selectedCity) {
             setFormData((prev) => ({
               ...prev,
@@ -334,7 +415,6 @@ export default function Verification() {
         setCitiesLoading(false);
       }
     };
-
     loadCities();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.sellerCountryId]);
@@ -344,45 +424,35 @@ export default function Verification() {
     setGeneralSuccess("");
   };
 
+  /* ─── File validation ─── */
   const validateFile = (file) => {
     if (!file) return "";
-
     const fileName = String(file?.name || "").toLowerCase();
     const hasValidExtension =
       fileName.endsWith(".png") ||
       fileName.endsWith(".jpg") ||
       fileName.endsWith(".jpeg");
-
     const hasValidMimeType = ALLOWED_IMAGE_FILE_TYPES.includes(
       String(file?.type || "").toLowerCase()
     );
-
-    if (!hasValidMimeType && !hasValidExtension) {
-      return t("onlyPngJpeg");
-    }
-
-    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+    if (!hasValidMimeType && !hasValidExtension) return t("onlyPngJpeg");
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024)
       return t("maxFileSize", { size: MAX_FILE_SIZE_MB });
-    }
-
     return "";
   };
 
+  /* ─── Map backend field errors ─── */
   const applyBackendFieldErrors = (error, stepIndex) => {
     const backendErrors = error?.response?.data?.errors;
     if (!backendErrors || typeof backendErrors !== "object") return false;
 
     const nextErrors = {};
-
     const assign = (targetKey, message) => {
       if (!targetKey || !message || nextErrors[targetKey]) return;
       nextErrors[targetKey] = message;
     };
-
     const pickMessage = (value) => {
-      if (Array.isArray(value)) {
-        return String(value.find(Boolean) || "").trim();
-      }
+      if (Array.isArray(value)) return String(value.find(Boolean) || "").trim();
       return String(value || "").trim();
     };
 
@@ -392,106 +462,56 @@ export default function Verification() {
       if (!message) return;
 
       if (stepIndex === 0) {
-        if (["storename", "sellername", "name"].includes(key)) {
-          assign("sellerName", message);
-        } else if (
-          ["phonenumber", "sellernumber", "phone", "mobile"].includes(key)
-        ) {
-          assign("sellerNumber", message);
-        } else if (
-          ["countryid", "sellercountry", "sellercountryid"].includes(key)
-        ) {
-          assign("sellerCountry", message);
-        } else if (["cityid", "sellercity", "sellercityid"].includes(key)) {
-          assign("sellerCity", message);
-        } else if (["description", "sellerdescription"].includes(key)) {
-          assign("sellerDescription", message);
-        } else if (["logo", "sellerlogo"].includes(key)) {
-          assign("sellerLogo", message);
-        }
+        if (["storename", "sellername", "name"].includes(key)) assign("sellerName", message);
+        else if (["phonenumber", "sellernumber", "phone", "mobile"].includes(key)) assign("sellerNumber", message);
+        else if (["countryid", "sellercountry", "sellercountryid"].includes(key)) assign("sellerCountry", message);
+        else if (["cityid", "sellercity", "sellercityid"].includes(key)) assign("sellerCity", message);
+        else if (["description", "sellerdescription"].includes(key)) assign("sellerDescription", message);
+        else if (["logo", "sellerlogo"].includes(key)) assign("sellerLogo", message);
       }
-
       if (stepIndex === 1) {
-        if (["nationalidfront"].includes(key)) {
-          assign("nationalIdFront", message);
-        } else if (["nationalidback"].includes(key)) {
-          assign("nationalIdBack", message);
-        } else if (["selfiewithid"].includes(key)) {
-          assign("selfieWithId", message);
-        }
+        if (["nationalidfront"].includes(key)) assign("nationalIdFront", message);
+        else if (["nationalidback"].includes(key)) assign("nationalIdBack", message);
+        else if (["selfiewithid"].includes(key)) assign("selfieWithId", message);
       }
-
       if (stepIndex === 2) {
-        if (["commercialregister", "commercialregistration"].includes(key)) {
-          assign("commercialRegistration", message);
-        } else if (["taxid"].includes(key)) {
-          assign("taxId", message);
-        } else if (["ownernationalidfront"].includes(key)) {
-          assign("ownerNationalIdFront", message);
-        } else if (["ownernationalidback"].includes(key)) {
-          assign("ownerNationalIdBack", message);
-        } else if (["instapaynumber"].includes(key)) {
-          assign("instaPayNumber", message);
-        } else if (["bankname"].includes(key)) {
-          assign("bankName", message);
-        } else if (["accountname", "accountholdername"].includes(key)) {
-          assign("accountHolderName", message);
-        } else if (["iban"].includes(key)) {
-          assign("iban", message);
-        } else if (["localaccountnumber"].includes(key)) {
-          assign("localAccountNumber", message);
-        }
+        if (["commercialregister", "commercialregistration"].includes(key)) assign("commercialRegistration", message);
+        else if (["taxid"].includes(key)) assign("taxId", message);
+        else if (["ownernationalidfront"].includes(key)) assign("ownerNationalIdFront", message);
+        else if (["ownernationalidback"].includes(key)) assign("ownerNationalIdBack", message);
+        else if (["instapaynumber"].includes(key)) assign("instaPayNumber", message);
+        else if (["bankname"].includes(key)) assign("bankName", message);
+        else if (["accountname", "accountholdername"].includes(key)) assign("accountHolderName", message);
+        else if (["iban"].includes(key)) assign("iban", message);
+        else if (["localaccountnumber"].includes(key)) assign("localAccountNumber", message);
       }
     });
 
     if (!Object.keys(nextErrors).length) return false;
-
-    setErrors((prev) => ({
-      ...prev,
-      ...nextErrors,
-    }));
+    setErrors((prev) => ({ ...prev, ...nextErrors }));
     setGeneralError("");
     return true;
   };
 
+  /* ─── Input handlers ─── */
   const handleChange = (e) => {
     const { name, value } = e.target;
     clearStepVisuals();
-
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-
-    setErrors((prev) => ({
-      ...prev,
-      [name]: "",
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    setErrors((prev) => ({ ...prev, [name]: "" }));
   };
 
   const handleDigitsInputChange = (e, fieldName) => {
     const digits = getDigitsOnly(e.target.value);
     clearStepVisuals();
-
-    setFormData((prev) => ({
-      ...prev,
-      [fieldName]: digits,
-    }));
-
-    setErrors((prev) => ({
-      ...prev,
-      [fieldName]: "",
-    }));
+    setFormData((prev) => ({ ...prev, [fieldName]: digits }));
+    setErrors((prev) => ({ ...prev, [fieldName]: "" }));
   };
 
   const handleCountryChange = (e) => {
     const selectedId = String(e.target.value || "");
-    const selectedCountry = countries.find(
-      (item) => String(item.id) === selectedId
-    );
-
+    const selectedCountry = countries.find((item) => String(item.id) === selectedId);
     clearStepVisuals();
-
     setFormData((prev) => ({
       ...prev,
       sellerCountryId: selectedId,
@@ -499,92 +519,50 @@ export default function Verification() {
       sellerCityId: "",
       sellerCity: "",
     }));
-
-    setErrors((prev) => ({
-      ...prev,
-      sellerCountry: "",
-      sellerCity: "",
-    }));
+    setErrors((prev) => ({ ...prev, sellerCountry: "", sellerCity: "" }));
   };
 
   const handleCityChange = (e) => {
     const selectedId = String(e.target.value || "");
     const selectedCity = cities.find((item) => String(item.id) === selectedId);
-
     clearStepVisuals();
-
     setFormData((prev) => ({
       ...prev,
       sellerCityId: selectedId,
       sellerCity: selectedCity?.name || "",
     }));
-
-    setErrors((prev) => ({
-      ...prev,
-      sellerCity: "",
-    }));
+    setErrors((prev) => ({ ...prev, sellerCity: "" }));
   };
 
-  const handleFileChange = (e, fieldName) => {
+  const handleFileChange = async (e, fieldName) => {
     const file = e.target.files?.[0];
     clearStepVisuals();
-
     const fileError = validateFile(file);
-
     if (fileError) {
-      setErrors((prev) => ({
-        ...prev,
-        [fieldName]: fileError,
-      }));
-
-      setFormData((prev) => ({
-        ...prev,
-        [fieldName]: null,
-      }));
+      setErrors((prev) => ({ ...prev, [fieldName]: fileError }));
+      setFormData((prev) => ({ ...prev, [fieldName]: null }));
       return;
     }
-
-    setFormData((prev) => ({
-      ...prev,
-      [fieldName]: file || null,
-    }));
-
-    setErrors((prev) => ({
-      ...prev,
-      [fieldName]: "",
-    }));
+    setFormData((prev) => ({ ...prev, [fieldName]: file || null }));
+    setErrors((prev) => ({ ...prev, [fieldName]: "" }));
+    if (file && FILE_KEYS[fieldName]) {
+      await saveFileToStorage(FILE_KEYS[fieldName], file);
+    }
   };
 
+  /* ─── Per-step validation ─── */
   const validateStep = () => {
     const newErrors = {};
 
     if (currentStep === 0) {
       const phoneDigits = getDigitsOnly(formData.sellerNumber);
-
-      if (!formData.sellerName.trim()) {
-        newErrors.sellerName = t("storeNameRequired");
-      }
-
-      if (!phoneDigits) {
-        newErrors.sellerNumber = t("phoneRequired");
-      } else if (!isValidPhoneNumber(phoneDigits)) {
-        newErrors.sellerNumber = t("phoneInvalid");
-      }
-
-      if (!formData.sellerCountryId) {
-        newErrors.sellerCountry = t("countryRequired");
-      }
-
-      if (!formData.sellerCityId) {
-        newErrors.sellerCity = t("cityRequired");
-      }
-
-      if (!formData.sellerDescription.trim()) {
-        newErrors.sellerDescription = t("descriptionRequired");
-      } else if (formData.sellerDescription.length > 650) {
-        newErrors.sellerDescription = t("descriptionMax650");
-      }
-
+      if (!formData.sellerName.trim()) newErrors.sellerName = t("storeNameRequired");
+      if (!phoneDigits) newErrors.sellerNumber = t("phoneRequired");
+      else if (!isValidPhoneNumber(phoneDigits)) newErrors.sellerNumber = t("phoneInvalid");
+      if (!formData.sellerCountryId) newErrors.sellerCountry = t("countryRequired");
+      if (!formData.sellerCityId) newErrors.sellerCity = t("cityRequired");
+      if (!formData.sellerDescription.trim()) newErrors.sellerDescription = t("descriptionRequired");
+      else if (formData.sellerDescription.length > 650) newErrors.sellerDescription = t("descriptionMax650");
       if (formData.sellerLogo) {
         const logoError = validateFile(formData.sellerLogo);
         if (logoError) newErrors.sellerLogo = logoError;
@@ -592,16 +570,9 @@ export default function Verification() {
     }
 
     if (currentStep === 1) {
-      if (!formData.nationalIdFront) {
-        newErrors.nationalIdFront = t("nationalFrontRequired");
-      }
-      if (!formData.nationalIdBack) {
-        newErrors.nationalIdBack = t("nationalBackRequired");
-      }
-      if (!formData.selfieWithId) {
-        newErrors.selfieWithId = t("selfieRequired");
-      }
-
+      if (!formData.nationalIdFront) newErrors.nationalIdFront = t("nationalFrontRequired");
+      if (!formData.nationalIdBack) newErrors.nationalIdBack = t("nationalBackRequired");
+      if (!formData.selfieWithId) newErrors.selfieWithId = t("selfieRequired");
       if (formData.nationalIdFront) {
         const err = validateFile(formData.nationalIdFront);
         if (err) newErrors.nationalIdFront = err;
@@ -617,28 +588,13 @@ export default function Verification() {
     }
 
     if (currentStep === 2) {
-      if (!formData.commercialRegistration) {
-        newErrors.commercialRegistration = t("commercialRegisterRequired");
-      }
-      if (!formData.taxId) {
-        newErrors.taxId = t("taxIdRequired");
-      }
-      if (!formData.ownerNationalIdFront) {
-        newErrors.ownerNationalIdFront = t("ownerFrontRequired");
-      }
-      if (!formData.ownerNationalIdBack) {
-        newErrors.ownerNationalIdBack = t("ownerBackRequired");
-      }
-      if (!formData.bankName.trim()) {
-        newErrors.bankName = t("bankNameRequired");
-      }
-      if (!formData.accountHolderName.trim()) {
-        newErrors.accountHolderName = t("accountNameRequired");
-      }
-      if (!formData.iban.trim()) {
-        newErrors.iban = t("ibanRequired");
-      }
-
+      if (!formData.commercialRegistration) newErrors.commercialRegistration = t("commercialRegisterRequired");
+      if (!formData.taxId) newErrors.taxId = t("taxIdRequired");
+      if (!formData.ownerNationalIdFront) newErrors.ownerNationalIdFront = t("ownerFrontRequired");
+      if (!formData.ownerNationalIdBack) newErrors.ownerNationalIdBack = t("ownerBackRequired");
+      if (!formData.bankName.trim()) newErrors.bankName = t("bankNameRequired");
+      if (!formData.accountHolderName.trim()) newErrors.accountHolderName = t("accountNameRequired");
+      if (!formData.iban.trim()) newErrors.iban = t("ibanRequired");
       if (formData.commercialRegistration) {
         const err = validateFile(formData.commercialRegistration);
         if (err) newErrors.commercialRegistration = err;
@@ -655,31 +611,55 @@ export default function Verification() {
         const err = validateFile(formData.ownerNationalIdBack);
         if (err) newErrors.ownerNationalIdBack = err;
       }
-
       const instaPayDigits = getDigitsOnly(formData.instaPayNumber);
       if (instaPayDigits) {
         const instaPayAsNumber = Number(instaPayDigits);
-        if (
-          !Number.isFinite(instaPayAsNumber) ||
-          instaPayAsNumber > MAX_INT_32
-        ) {
+        if (!Number.isFinite(instaPayAsNumber) || instaPayAsNumber > MAX_INT_32) {
           newErrors.instaPayNumber = t("instaPayInvalid");
         }
       }
     }
 
     setErrors(newErrors);
-
     if (Object.keys(newErrors).length > 0) {
       setGeneralError("");
       setGeneralSuccess("");
     }
-
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleCreateSellerApi = async () => {
-    const payload = {
+  /* ─── Submit all 3 steps ─────────────────────────────────────────
+     NOTIFICATIONS GATE PATTERN (same as SellerProfile):
+     
+     Before every API call that might fail with 403, we first check
+     getNotifications(). If it returns 200, the seller is already
+     fully verified — we treat the whole flow as complete and navigate
+     to /seller immediately without hitting personal-verification or
+     business-verification at all.
+
+     Flow:
+     1. Check notifications → if 200, already verified → done ✅
+     2. Call createSeller:
+        - 200/201 → success, continue
+        - 409     → already exists, check notifications again:
+                    if 200 → already verified → done ✅
+                    if 403 → seller exists but not verified → continue to step 2
+     3. Call personalVerification (tokens re-read fresh from storage)
+        - 200/201 → success, continue
+        - 409     → already uploaded → continue
+        - 403     → check notifications: if 200 → done ✅, else rethrow
+     4. Call businessVerification (tokens re-read fresh)
+        - 200/201/409 → success → done ✅
+  ─────────────────────────────────────────────────────────────────── */
+  const submitAllToBackend = async () => {
+    /* ── Pre-flight: notifications gate check ── */
+    const alreadyVerifiedAtStart = await checkIsVerifiedViaNotifications();
+    if (alreadyVerifiedAtStart) {
+      return { alreadyVerified: true };
+    }
+
+    /* ── STEP 1: Create Seller ── */
+    const step1Payload = {
       StoreName: formData.sellerName.trim(),
       PhoneNumber: getDigitsOnly(formData.sellerNumber),
       CityId: Number(formData.sellerCityId),
@@ -688,75 +668,125 @@ export default function Verification() {
       Logo: formData.sellerLogo || undefined,
     };
 
-    const data = await createSeller(payload);
+    let step1Data;
+    try {
+      step1Data = await createSeller(step1Payload);
+    } catch (error) {
+      const status = Number(error?.response?.status || 0);
+      // 409 = seller already exists — check if also already verified
+      if (status === 409) {
+        const verifiedAfter409 = await checkIsVerifiedViaNotifications();
+        if (verifiedAfter409) return { alreadyVerified: true };
+        // Not verified yet — treat as step 1 success and continue
+        step1Data = {
+          ...(error?.response?.data || {}),
+          alreadyExists: true,
+          isSuccess: true,
+        };
+      } else {
+        throw Object.assign(error, { __step: 0 });
+      }
+    }
 
-    const success =
-      data?.alreadyExists === true ||
-      looksSuccessful(data) ||
-      Number(data?.sellerId || 0) > 0;
+    const step1Success =
+      step1Data?.alreadyExists === true ||
+      looksSuccessful(step1Data) ||
+      Number(step1Data?.sellerId || 0) > 0;
 
-    if (!success) {
-      throw new Error(
-        data?.message || data?.errors?.[0] || "Create seller failed"
+    if (!step1Success) {
+      throw Object.assign(
+        new Error(step1Data?.message || step1Data?.errors?.[0] || "Create seller failed"),
+        { __step: 0 }
       );
     }
 
-    setGeneralSuccess(data?.message || t("sellerInfoSaved"));
-    return data;
-  };
+    /* ── STEP 2: Personal Verification ──
+       Tokens are re-read fresh inside personalVerification() — the
+       sellerToken written by createSeller is now in storage.
+       If we get 403, check notifications before giving up: the seller
+       may have been verified via another session between step 1 and 2.
+    ── */
+    const personalFormData = new FormData();
+    if (formData.nationalIdFront instanceof File)
+      personalFormData.append("NationalIdFront", formData.nationalIdFront);
+    if (formData.nationalIdBack instanceof File)
+      personalFormData.append("NationalIdBack", formData.nationalIdBack);
+    if (formData.selfieWithId instanceof File)
+      personalFormData.append("SelfieWithId", formData.selfieWithId);
 
-  const handlePersonalVerificationApi = async () => {
-    const payload = new FormData();
-    payload.append("NationalIdFront", formData.nationalIdFront);
-    payload.append("NationalIdBack", formData.nationalIdBack);
-    payload.append("SelfieWithId", formData.selfieWithId);
+    let step2Data;
+    try {
+      step2Data = await personalVerification(personalFormData);
+    } catch (error) {
+      const status = Number(error?.response?.status || 0);
+      if (status === 403 || status === 401) {
+        // Before treating this as a hard failure, check if already verified
+        const verifiedAfterPersonal403 = await checkIsVerifiedViaNotifications();
+        if (verifiedAfterPersonal403) return { alreadyVerified: true };
+      }
+      throw Object.assign(error, { __step: 1 });
+    }
 
-    const data = await personalVerification(payload);
+    const step2Success =
+      step2Data?.alreadyExists === true ||
+      looksSuccessful(step2Data);
 
-    const success = looksSuccessful(data) || data?.alreadyExists === true;
-
-    if (!success && data?.isSuccess === false) {
-      throw new Error(
-        data?.message || data?.errors?.[0] || "Personal verification failed"
+    if (!step2Success) {
+      throw Object.assign(
+        new Error(step2Data?.message || step2Data?.errors?.[0] || "Personal verification failed"),
+        { __step: 1 }
       );
     }
 
-    setGeneralSuccess(data?.message || t("identityUploaded"));
-
-    return data;
-  };
-
-  const handleBusinessVerificationApi = async () => {
-    const cleanInstaPay = getDigitsOnly(formData.instaPayNumber);
-
-    const payload = {
-      CommercialRegister: formData.commercialRegistration,
-      TaxId: formData.taxId,
-      OwnerNationalIdFront: formData.ownerNationalIdFront,
-      OwnerNationalIdBack: formData.ownerNationalIdBack,
+    /* ── STEP 3: Business Verification ── */
+    const step3Payload = {
+      CommercialRegister:
+        formData.commercialRegistration instanceof File
+          ? formData.commercialRegistration
+          : null,
+      TaxId: formData.taxId instanceof File ? formData.taxId : null,
+      OwnerNationalIdFront:
+        formData.ownerNationalIdFront instanceof File
+          ? formData.ownerNationalIdFront
+          : null,
+      OwnerNationalIdBack:
+        formData.ownerNationalIdBack instanceof File
+          ? formData.ownerNationalIdBack
+          : null,
       BankName: formData.bankName.trim(),
       AccountName: formData.accountHolderName.trim(),
       IBAN: formData.iban.trim(),
       LocalAccountNumber: getDigitsOnly(formData.localAccountNumber),
-      instaPayNumber: cleanInstaPay,
+      instaPayNumber: getDigitsOnly(formData.instaPayNumber),
     };
 
-    const data = await businessVerification(payload);
+    let step3Data;
+    try {
+      step3Data = await businessVerification(step3Payload);
+    } catch (error) {
+      const status = Number(error?.response?.status || 0);
+      if (status === 403 || status === 401) {
+        const verifiedAfterBusiness403 = await checkIsVerifiedViaNotifications();
+        if (verifiedAfterBusiness403) return { alreadyVerified: true };
+      }
+      throw Object.assign(error, { __step: 2 });
+    }
 
-    const success = looksSuccessful(data) || data?.alreadyExists === true;
+    const step3Success =
+      step3Data?.alreadyExists === true ||
+      looksSuccessful(step3Data);
 
-    if (!success && data?.isSuccess === false) {
-      throw new Error(
-        data?.message || data?.errors?.[0] || "Business verification failed"
+    if (!step3Success) {
+      throw Object.assign(
+        new Error(step3Data?.message || step3Data?.errors?.[0] || "Business verification failed"),
+        { __step: 2 }
       );
     }
 
-    setGeneralSuccess(data?.message || t("businessSubmitted"));
-
-    clearDraft();
-    return data;
+    return { step1Data, step2Data, step3Data };
   };
 
+  /* ─── Next button handler ─── */
   const handleNext = async () => {
     clearStepVisuals();
     setErrors({});
@@ -764,72 +794,57 @@ export default function Verification() {
     const isValid = validateStep();
     if (!isValid) return;
 
-    try {
-      setApiLoading(true);
+    if (currentStep === 0) { setCurrentStep(1); return; }
+    if (currentStep === 1) { setCurrentStep(2); return; }
 
-      if (currentStep === 0) {
-        await handleCreateSellerApi();
-        setCurrentStep(1);
-        return;
-      }
+    /* Step 2 (final) — submit everything */
+    if (currentStep === 2) {
+      try {
+        setApiLoading(true);
 
-      if (currentStep === 1) {
-        await handlePersonalVerificationApi();
-        setCurrentStep(2);
-        return;
-      }
+        const result = await submitAllToBackend();
 
-      if (currentStep === 2) {
-        await handleBusinessVerificationApi();
         clearDraft();
+        clearAllFilesFromStorage();
 
+        // Whether already verified or just submitted, show success and go home
+        setGeneralSuccess(t("businessSubmitted"));
         setTimeout(() => {
           navigate("/seller", { replace: true });
         }, 800);
-      }
-    } catch (error) {
-      const status = Number(error?.response?.status || 0);
+      } catch (error) {
+        const stepFailed = error?.__step ?? 2;
+        const status = Number(error?.response?.status || 0);
 
-      if (status === 409) {
-        if (currentStep === 0) {
-          setGeneralSuccess(t("sellerInfoSaved"));
-          setCurrentStep(1);
-          return;
-        }
-
-        if (currentStep === 1) {
-          setGeneralSuccess(t("identityUploaded"));
-          setCurrentStep(2);
-          return;
-        }
-
-        if (currentStep === 2) {
-          setGeneralSuccess(t("businessSubmitted"));
+        if (status === 409) {
           clearDraft();
+          clearAllFilesFromStorage();
+          setGeneralSuccess(t("businessSubmitted"));
           setTimeout(() => {
             navigate("/seller", { replace: true });
           }, 800);
           return;
         }
-      }
 
-      const hasMappedFieldErrors = applyBackendFieldErrors(error, currentStep);
-      if (hasMappedFieldErrors) {
-        setGeneralError("");
-        return;
-      }
+        const hasMappedFieldErrors = applyBackendFieldErrors(error, stepFailed);
+        if (hasMappedFieldErrors) {
+          setCurrentStep(stepFailed);
+          setGeneralError("");
+          return;
+        }
 
-      if (currentStep === 0) {
-        setGeneralError(getFriendlyApiError(error, t("saveSellerFailed")));
-      } else if (currentStep === 1) {
-        setGeneralError(getFriendlyApiError(error, t("uploadIdentityFailed")));
-      } else if (currentStep === 2) {
-        setGeneralError(getFriendlyApiError(error, t("submitBusinessFailed")));
-      } else {
-        setGeneralError(t("loginFailed"));
+        if (stepFailed === 0) {
+          setGeneralError(getFriendlyApiError(error, t("saveSellerFailed")));
+          setCurrentStep(0);
+        } else if (stepFailed === 1) {
+          setGeneralError(getFriendlyApiError(error, t("uploadIdentityFailed")));
+          setCurrentStep(1);
+        } else {
+          setGeneralError(getFriendlyApiError(error, t("submitBusinessFailed")));
+        }
+      } finally {
+        setApiLoading(false);
       }
-    } finally {
-      setApiLoading(false);
     }
   };
 
@@ -841,18 +856,13 @@ export default function Verification() {
     }
   };
 
+  /* ─── Render helpers ─── */
   const renderFileName = (file) => {
     if (!file) return null;
-
     return (
       <p
         className="verification__file-name"
-        style={{
-          margin: "8px 0 0",
-          fontSize: "13px",
-          color: "#5d6677",
-          wordBreak: "break-word",
-        }}
+        style={{ margin: "8px 0 0", fontSize: "13px", color: "#5d6677", wordBreak: "break-word" }}
       >
         {file.name}
       </p>
@@ -872,7 +882,6 @@ export default function Verification() {
         </div>
       );
     }
-
     if (generalSuccess) {
       return (
         <div className="alert alert-success" role="alert">
@@ -880,10 +889,10 @@ export default function Verification() {
         </div>
       );
     }
-
     return null;
   };
 
+  /* ─── Step renders ─── */
   const renderSellerInformationStep = () => (
     <div className="verification__card">
       <h2 className="verification__title">{t("sellerInformation")}</h2>
@@ -1117,9 +1126,7 @@ export default function Verification() {
         <input
           type="text"
           name="instaPayNumber"
-          placeholder={t("Digits only, optional", {
-            defaultValue: "Digits only, optional",
-          })}
+          placeholder={t("Digits only, optional", { defaultValue: "Digits only, optional" })}
           className="verification__input"
           value={formData.instaPayNumber}
           onChange={(e) => handleDigitsInputChange(e, "instaPayNumber")}

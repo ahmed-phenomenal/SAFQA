@@ -603,7 +603,13 @@ export default function AdminTrackChats() {
       loadDisputes();
     } catch (err) {
       console.error("[TrackChats] cancelDispute error:", err);
-      alert(err?.response?.data?.message || err?.message || t("cancelFailed", "Cancel failed."));
+      if (err?.response?.status === 404) {
+        alert(t("disputeAlreadyFinished", "Already Finished"));
+        setDisputes((prev) => prev.filter((d) => d.id !== cancelCard.id));
+        setCancelCard(null);
+      } else {
+        alert(err?.response?.data?.message || err?.message || t("cancelFailed", "Cancel failed."));
+      }
     } finally {
       setCancelLoading(false);
     }

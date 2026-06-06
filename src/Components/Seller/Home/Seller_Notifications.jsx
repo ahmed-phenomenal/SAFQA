@@ -92,15 +92,20 @@ export default function Seller_Notifications() {
 
     const normalizedApiMessage = String(apiMessage).toLowerCase();
 
-    const isVerificationError =
+    if (statusCode === 401) {
+      return t("sessionExpired", "Login expired, please login again");
+    }
+
+    if (
       statusCode === 403 ||
       normalizedApiMessage.includes("not verified") ||
       normalizedApiMessage.includes("verification") ||
-      normalizedApiMessage.includes("verify");
+      normalizedApiMessage.includes("verify")
+    ) {
+      return t("verificationRequired", "You must be verified to view this section");
+    }
 
-    return isVerificationError
-      ? t("verificationRequiredPage")
-      : apiMessage || err?.message || fallback;
+    return apiMessage || err?.message || fallback;
   };
 
   const loadNotifications = async () => {
@@ -465,8 +470,12 @@ export default function Seller_Notifications() {
               padding: "12px 14px",
               borderRadius: "10px",
               marginBottom: "18px",
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
             }}
           >
+            <i className="fa-solid fa-circle-exclamation" />
             {error}
           </div>
         )}
@@ -577,7 +586,7 @@ export default function Seller_Notifications() {
               </div>
             ))}
           </div>
-        ) : enrichedNotifications.length === 0 ? (
+        ) : enrichedNotifications.length === 0 && !error ? (
           <div
             style={{
               padding: "24px 0",
@@ -722,22 +731,22 @@ export default function Seller_Notifications() {
                     flexShrink: 0,
                   }}
                 >
-<span
-  className="notification-time"
-  style={{
-    fontSize: "12px",
-    color: "#999",
-    lineHeight: "1",
-    whiteSpace: "nowrap",
-    position: "static",
-    direction: "ltr",
-    unicodeBidi: "embed",
-    textAlign: "center",
-    display: "block",
-  }}
->
-  {item.timeLabel}
-</span>
+                  <span
+                    className="notification-time"
+                    style={{
+                      fontSize: "12px",
+                      color: "#999",
+                      lineHeight: "1",
+                      whiteSpace: "nowrap",
+                      position: "static",
+                      direction: "ltr",
+                      unicodeBidi: "embed",
+                      textAlign: "center",
+                      display: "block",
+                    }}
+                  >
+                    {item.timeLabel}
+                  </span>
 
                   <button
                     type="button"
