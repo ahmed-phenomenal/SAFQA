@@ -46,7 +46,6 @@ const getCurrentAccountKey = () => {
 
 const getScopedKey = (baseKey) => `${baseKey}:${getCurrentAccountKey()}`;
 
-// Does NOT dispatch any event — prevents infinite loop
 const markSellerVerifiedLocally = () => {
   if (typeof window === "undefined") return false;
   const accountKey = getCurrentAccountKey();
@@ -253,7 +252,6 @@ export default function Seller() {
 
       return normalized;
     } catch {
-      // If API fails, check local submitted state before showing "not verified"
       if (hasLocalSubmittedState()) {
         const pending = makePendingState({});
         setVerificationStatus(pending);
@@ -309,16 +307,11 @@ export default function Seller() {
     fetchSellerHome();
   }, []);
 
-  // ✅ KEY FIX: Use notifications API response to determine verification status.
-  //    200 = seller is verified (protected endpoint accessible)
-  //    403 = not verified
-  //    Any other error = network issue, don't change verification state
   const loadNotificationsCount = useCallback(async () => {
     try {
       setNotificationsLoading(true);
       const data = await getNotifications();
 
-      // ✅ 200 success means the protected endpoint is accessible = verified
       if (!hasLocalVerifiedState()) {
         markSellerVerifiedLocally();
         setVerificationStatus(makeVerifiedState({}));
@@ -332,20 +325,15 @@ export default function Seller() {
       const status = Number(err?.response?.status || 0);
 
       if (status === 403) {
-        // ✅ 403 = explicitly not verified — update UI if we thought they were
         if (hasLocalVerifiedState()) {
-          // Don't override localStorage here — the admin may have revoked access
-          // Just update the UI state so the banner shows
           setVerificationStatus((prev) => {
             if (prev.isVerified) return normalizeVerificationState({});
             return prev;
           });
         } else if (hasLocalSubmittedState()) {
-          // Still pending
           setVerificationStatus(makePendingState({}));
         }
       }
-      // For other errors (network, 500, etc.) — don't change verification state
       setNotificationsCount(0);
     } finally {
       setNotificationsLoading(false);
@@ -437,32 +425,134 @@ export default function Seller() {
           </div>
 
           {!verificationStatus?.isVerified && (
-            <div style={{ width:"86%", margin:"18px auto 24px", background: isPendingOrSubmitted ? "#eef6ff" : "#f8efd9", border: isPendingOrSubmitted ? "1px solid #9cc4ff" : "1px solid #e7c27a", borderRadius:"20px", padding: bannerCollapsed ? "12px 18px" : "20px 22px", boxShadow:"0 10px 24px rgba(0,0,0,0.06)", position:"relative", transition:"all 0.25s ease" }}>
+            <div style={{
+              width: "86%",
+              margin: "18px auto 24px",
+              background: isPendingOrSubmitted ? "#eef6ff" : "#f8efd9",
+              border: isPendingOrSubmitted ? "1px solid #9cc4ff" : "1px solid #e7c27a",
+              borderRadius: "20px",
+              padding: bannerCollapsed ? "12px 18px" : "20px 22px",
+              boxShadow: "0 10px 24px rgba(0,0,0,0.06)",
+              position: "relative",
+              transition: "all 0.25s ease",
+              boxSizing: "border-box",
+            }}>
               {!bannerCollapsed ? (
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:"20px", flexWrap:"nowrap" }}>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <h4 style={{ margin:0, color: isPendingOrSubmitted ? "#0b4aa2" : "#b36b00", fontSize:"20px", fontWeight:800, lineHeight:1.3 }}>
+                <div style={{
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  flexWrap: "nowrap",
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h4 style={{
+                      margin: 0,
+                      color: isPendingOrSubmitted ? "#0b4aa2" : "#b36b00",
+                      fontSize: "clamp(14px, 3.5vw, 20px)",
+                      fontWeight: 800,
+                      lineHeight: 1.3,
+                      whiteSpace: "normal",
+                      wordBreak: "break-word",
+                    }}>
                       {isPendingOrSubmitted ? t("verificationPendingReview") : t("youHaveToVerifyToContinue")}
                     </h4>
-                    <p style={{ margin:"8px 0 0", color: isPendingOrSubmitted ? "#46648f" : "#9a6a14", fontSize:"15px", lineHeight:1.6 }}>
+                    <p style={{
+                      margin: "8px 0 0",
+                      color: isPendingOrSubmitted ? "#46648f" : "#9a6a14",
+                      fontSize: "clamp(12px, 3vw, 15px)",
+                      lineHeight: 1.6,
+                      wordBreak: "break-word",
+                    }}>
                       {isPendingOrSubmitted ? t("verificationPendingBannerText") : t("verificationRequiredBannerText")}
                     </p>
                   </div>
-                  <div style={{ display:"flex", alignItems:"center", gap:"18px", flexShrink:0 }}>
-                    <button type="button" onClick={() => navigate(VERIFICATION_ROUTE, { state: { mode: isPendingOrSubmitted ? "review" : "verify" } })} style={{ border:"none", background:"#003f98", color:"#fff", borderRadius:"14px", padding:"14px 26px", fontWeight:800, fontSize:"16px", cursor:"pointer", whiteSpace:"nowrap" }}>
+                  <div style={{
+                    display: "flex",
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: "10px",
+                    flexShrink: 0,
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => navigate(VERIFICATION_ROUTE, { state: { mode: isPendingOrSubmitted ? "review" : "verify" } })}
+                      style={{
+                        border: "none",
+                        background: "#003f98",
+                        color: "#fff",
+                        borderRadius: "14px",
+                        padding: "10px 16px",
+                        fontWeight: 800,
+                        fontSize: "clamp(12px, 3vw, 16px)",
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      }}
+                    >
                       {isPendingOrSubmitted ? t("review") : t("verifyNow")}
                     </button>
-                    <button type="button" onClick={() => setBannerCollapsed((p) => !p)} style={{ border:"none", background:"transparent", color: isPendingOrSubmitted ? "#0b4aa2" : "#b36b00", cursor:"pointer", fontSize:"20px", width:"24px", height:"24px", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}>
+                    <button
+                      type="button"
+                      onClick={() => setBannerCollapsed((p) => !p)}
+                      style={{
+                        border: "none",
+                        background: "transparent",
+                        color: isPendingOrSubmitted ? "#0b4aa2" : "#b36b00",
+                        cursor: "pointer",
+                        fontSize: "20px",
+                        width: "24px",
+                        height: "24px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: 0,
+                        flexShrink: 0,
+                      }}
+                    >
                       <i className="fa-solid fa-angle-up"></i>
                     </button>
                   </div>
                 </div>
               ) : (
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:"16px" }}>
-                  <div style={{ color: isPendingOrSubmitted ? "#0b4aa2" : "#b36b00", fontWeight:800, fontSize:"17px" }}>
+                <div style={{
+                  display: "flex",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  flexWrap: "nowrap",
+                }}>
+                  <div style={{
+                    color: isPendingOrSubmitted ? "#0b4aa2" : "#b36b00",
+                    fontWeight: 800,
+                    fontSize: "clamp(13px, 3.5vw, 17px)",
+                    whiteSpace: "normal",
+                    wordBreak: "break-word",
+                    flex: 1,
+                    minWidth: 0,
+                  }}>
                     {isPendingOrSubmitted ? t("verificationPendingReview") : t("youHaveToVerifyToContinue")}
                   </div>
-                  <button type="button" onClick={() => setBannerCollapsed((p) => !p)} style={{ border:"none", background:"transparent", color: isPendingOrSubmitted ? "#0b4aa2" : "#b36b00", cursor:"pointer", fontSize:"20px", width:"24px", height:"24px", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}>
+                  <button
+                    type="button"
+                    onClick={() => setBannerCollapsed((p) => !p)}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      color: isPendingOrSubmitted ? "#0b4aa2" : "#b36b00",
+                      cursor: "pointer",
+                      fontSize: "20px",
+                      width: "24px",
+                      height: "24px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: 0,
+                      flexShrink: 0,
+                    }}
+                  >
                     <i className="fa-solid fa-angle-down"></i>
                   </button>
                 </div>
@@ -474,11 +564,11 @@ export default function Seller() {
             <div className="seller-user-left">
               {sellerProfileLoading ? (
                 <>
-                  <div className="seller-avatar" style={{ borderRadius:"50%", ...skeletonPulse }} />
-                  <div className="seller-user-text" style={{ minWidth:220 }}>
-                    <div style={{ width:90,  height:12, borderRadius:8, marginBottom:10, ...skeletonPulse }} />
-                    <div style={{ width:150, height:18, borderRadius:8, marginBottom:10, ...skeletonPulse }} />
-                    <div style={{ width:120, height:12, borderRadius:8, ...skeletonPulse }} />
+                  <div className="seller-avatar" style={{ borderRadius: "50%", ...skeletonPulse }} />
+                  <div className="seller-user-text" style={{ minWidth: 220 }}>
+                    <div style={{ width: 90,  height: 12, borderRadius: 8, marginBottom: 10, ...skeletonPulse }} />
+                    <div style={{ width: 150, height: 18, borderRadius: 8, marginBottom: 10, ...skeletonPulse }} />
+                    <div style={{ width: 120, height: 12, borderRadius: 8, ...skeletonPulse }} />
                   </div>
                 </>
               ) : (
@@ -486,7 +576,7 @@ export default function Seller() {
                   {sellerProfile.image && !profileImageFailed ? (
                     <img src={sellerProfile.image} alt={t("profile")} className="seller-avatar" onError={() => setProfileImageFailed(true)} />
                   ) : (
-                    <div className="seller-avatar" style={{ background:"#eef2f7", display:"flex", alignItems:"center", justifyContent:"center", color:"#8a94a6", fontSize:"28px" }}>
+                    <div className="seller-avatar" style={{ background: "#eef2f7", display: "flex", alignItems: "center", justifyContent: "center", color: "#8a94a6", fontSize: "28px" }}>
                       <i className="fa-regular fa-user"></i>
                     </div>
                   )}
@@ -506,10 +596,10 @@ export default function Seller() {
             </div>
 
             <div className="seller-user-icons">
-              <Link to="/seller-notifications" className="seller-icon-link" aria-label={t("notifications")} style={{ position:"relative" }}>
+              <Link to="/seller-notifications" className="seller-icon-link" aria-label={t("notifications")} style={{ position: "relative" }}>
                 <i className="fa-regular fa-bell"></i>
                 {!notificationsLoading && notificationsCount > 0 && (
-                  <span style={{ position:"absolute", top:"-6px", right:"-8px", minWidth:"18px", height:"18px", padding:"0 5px", borderRadius:"999px", background:"#e53935", color:"#fff", fontSize:"11px", fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1 }}>
+                  <span style={{ position: "absolute", top: "-6px", right: "-8px", minWidth: "18px", height: "18px", padding: "0 5px", borderRadius: "999px", background: "#e53935", color: "#fff", fontSize: "11px", fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>
                     {notificationsCount > 99 ? "99+" : notificationsCount}
                   </span>
                 )}
@@ -547,13 +637,13 @@ export default function Seller() {
       </div>
 
       {showWelcomeVerificationModal && !verificationStatus?.isVerified && !verificationStatus?.isPending && !verificationStatus?.hasSubmittedVerification && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:9999, padding:"16px" }}>
-          <div style={{ width:"100%", maxWidth:"430px", background:"#fff", borderRadius:"18px", padding:"24px", boxShadow:"0 20px 50px rgba(0,0,0,0.18)", textAlign:"center" }}>
-            <h3 style={{ margin:0, marginBottom:"12px", color:"#023E8A", fontWeight:700 }}>{t("continueAsBusinessAccount")}</h3>
-            <p style={{ margin:0, color:"#5f6c7b", lineHeight:1.7 }}>{t("completeVerificationBusinessText")}</p>
-            <div style={{ display:"flex", gap:"10px", justifyContent:"center", marginTop:"22px", flexWrap:"wrap" }}>
-              <button type="button" onClick={handleConfirmVerification} style={{ border:"none", background:"#023E8A", color:"#fff", borderRadius:"10px", padding:"10px 18px", fontWeight:700, cursor:"pointer", minWidth:"110px" }}>{t("ok")}</button>
-              <button type="button" onClick={handleDismissWelcomeModal} style={{ border:"1px solid #d9d9d9", background:"#fff", color:"#444", borderRadius:"10px", padding:"10px 18px", fontWeight:700, cursor:"pointer", minWidth:"110px" }}>{t("notNow")}</button>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: "16px" }}>
+          <div style={{ width: "100%", maxWidth: "430px", background: "#fff", borderRadius: "18px", padding: "24px", boxShadow: "0 20px 50px rgba(0,0,0,0.18)", textAlign: "center" }}>
+            <h3 style={{ margin: 0, marginBottom: "12px", color: "#023E8A", fontWeight: 700 }}>{t("continueAsBusinessAccount")}</h3>
+            <p style={{ margin: 0, color: "#5f6c7b", lineHeight: 1.7 }}>{t("completeVerificationBusinessText")}</p>
+            <div style={{ display: "flex", gap: "10px", justifyContent: "center", marginTop: "22px", flexWrap: "wrap" }}>
+              <button type="button" onClick={handleConfirmVerification} style={{ border: "none", background: "#023E8A", color: "#fff", borderRadius: "10px", padding: "10px 18px", fontWeight: 700, cursor: "pointer", minWidth: "110px" }}>{t("ok")}</button>
+              <button type="button" onClick={handleDismissWelcomeModal} style={{ border: "1px solid #d9d9d9", background: "#fff", color: "#444", borderRadius: "10px", padding: "10px 18px", fontWeight: 700, cursor: "pointer", minWidth: "110px" }}>{t("notNow")}</button>
             </div>
           </div>
         </div>
