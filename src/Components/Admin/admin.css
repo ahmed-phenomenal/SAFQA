@@ -835,4 +835,11 @@
   background: #1e293b;     /* dark mode */
   color: #e2e8f0;
 }
+.dark-admin .admin-chat-page-title,
+.dark-admin .admin-chat-section-title {
+  color: #f8fafc;
+}
+.dark-admin .ann-page-title {
+  color: #f8fafc;
+}
 
