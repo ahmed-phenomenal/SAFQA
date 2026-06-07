@@ -306,28 +306,39 @@ export default function Order() {
   return (
     <div className="orders" dir={isArabic ? "rtl" : "ltr"}>
       <style>{`
+        /* ── Reset & force light background ── */
+        .orders,
+        .orders * {
+          box-sizing: border-box;
+        }
+
         .orders {
           min-height: 100vh;
-          background: #f4f7fb;
+          background-color: #f4f7fb !important;
+          background: #f4f7fb !important;
           padding: 30px 16px 70px;
           font-family: Arial, Helvetica, sans-serif;
+          color: #111827;
         }
 
         .container {
-          width: min(100%, 900px);
+          width: 100%;
+          max-width: 900px;
           margin: 0 auto;
         }
 
+        /* ── Title ── */
         .orders-title {
           text-align: center;
           color: #063b78;
-          font-size: 36px;
+          font-size: clamp(24px, 6vw, 36px);
           font-weight: 900;
           margin-bottom: 24px;
           font-family: Georgia, "Times New Roman", serif;
           text-transform: uppercase;
         }
 
+        /* ── Tabs ── */
         .orders-tabs {
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -339,31 +350,40 @@ export default function Order() {
         }
 
         .tab {
-          padding: 16px;
+          padding: 14px 8px;
           text-align: center;
           cursor: pointer;
           font-weight: 900;
           color: #063b78;
+          font-size: clamp(13px, 3.5vw, 16px);
+          line-height: 1.3;
+          white-space: normal;
+          word-break: break-word;
+          background: #fff;
+          transition: background 0.2s, color 0.2s;
         }
 
         .tab.active {
           background: #063b78;
-          color: white;
+          color: #fff;
         }
 
+        /* ── Order card ── */
         .order-card {
-          background: #fff;
+          background: #fff !important;
           border-radius: 16px;
           padding: 20px;
           margin-bottom: 16px;
           border: 1px solid #e5e7eb;
           box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+          color: #111827;
         }
 
         .order-id {
           font-weight: 900;
           color: #111827;
           margin: 0 0 14px;
+          font-size: clamp(13px, 3.5vw, 15px);
         }
 
         .order-id span {
@@ -373,24 +393,28 @@ export default function Order() {
         .card-row {
           display: flex;
           justify-content: space-between;
-          gap: 16px;
+          gap: 12px;
           align-items: center;
+          flex-wrap: wrap;
         }
 
         .card-images {
           display: flex;
-          gap: 10px;
+          gap: 8px;
           flex-wrap: wrap;
+          flex: 1;
+          min-width: 0;
         }
 
         .card-images img,
         .card-image-empty {
-          width: 96px;
-          height: 96px;
+          width: 80px;
+          height: 80px;
           border-radius: 12px;
           object-fit: cover;
           background: #f1f5f9;
           border: 1px solid #e5e7eb;
+          flex-shrink: 0;
         }
 
         .card-image-empty {
@@ -398,17 +422,25 @@ export default function Order() {
           align-items: center;
           justify-content: center;
           color: #94a3b8;
-          font-size: 12px;
+          font-size: 11px;
           font-weight: 800;
+          text-align: center;
+          padding: 4px;
         }
 
         .card-actions {
           display: flex;
           flex-direction: column;
           gap: 10px;
-          min-width: 140px;
+          flex-shrink: 0;
         }
 
+        .progress-actions {
+          flex-direction: row;
+          align-items: center;
+        }
+
+        /* ── Buttons ── */
         .btn-review,
         .btn-report,
         .btn-track,
@@ -418,7 +450,7 @@ export default function Order() {
         .success-btn-light {
           border: none;
           border-radius: 10px;
-          padding: 12px 16px;
+          padding: 10px 14px;
           font-weight: 900;
           cursor: pointer;
           text-decoration: none;
@@ -426,6 +458,8 @@ export default function Order() {
           display: inline-flex;
           justify-content: center;
           align-items: center;
+          font-size: clamp(12px, 3vw, 14px);
+          white-space: nowrap;
         }
 
         .btn-review,
@@ -451,6 +485,7 @@ export default function Order() {
           color: #4b5563;
           margin: 14px 0 0;
           font-weight: 700;
+          font-size: clamp(12px, 3vw, 14px);
         }
 
         .delivered-word {
@@ -458,6 +493,38 @@ export default function Order() {
           font-weight: 900;
         }
 
+        /* ── Mobile: card row stacks ── */
+        @media (max-width: 480px) {
+          .card-row {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .card-images {
+            justify-content: flex-start;
+          }
+
+          .card-images img,
+          .card-image-empty {
+            width: 72px;
+            height: 72px;
+          }
+
+          .card-actions {
+            flex-direction: row;
+            width: 100%;
+          }
+
+          .card-actions > * {
+            flex: 1;
+          }
+
+          .progress-actions {
+            flex-direction: row;
+          }
+        }
+
+        /* ── Popup ── */
         .popup-overlay {
           position: fixed;
           inset: 0;
@@ -465,20 +532,23 @@ export default function Order() {
           display: flex;
           align-items: center;
           justify-content: center;
-          padding: 20px;
+          padding: 16px;
           z-index: 9999;
         }
 
         .popup-box {
-          width: min(100%, 520px);
-          background: white;
+          width: 100%;
+          max-width: 520px;
+          background: #fff;
           border-radius: 18px;
-          padding: 24px;
+          padding: 20px;
           box-shadow: 0 18px 48px rgba(0,0,0,0.2);
+          max-height: 90vh;
+          overflow-y: auto;
         }
 
         .popup-box-lg {
-          width: min(100%, 650px);
+          max-width: 650px;
         }
 
         .popup-header {
@@ -491,15 +561,18 @@ export default function Order() {
         .popup-title {
           margin: 0;
           color: #111827;
-          font-size: 24px;
+          font-size: clamp(18px, 5vw, 24px);
           font-weight: 900;
         }
 
         .popup-close {
           border: none;
           background: transparent;
-          font-size: 30px;
+          font-size: 28px;
           cursor: pointer;
+          color: #111827;
+          line-height: 1;
+          padding: 4px;
         }
 
         .popup-body {
@@ -513,6 +586,7 @@ export default function Order() {
           gap: 10px;
           font-weight: 800;
           color: #374151;
+          font-size: clamp(13px, 3.5vw, 15px);
         }
 
         .popup-field {
@@ -523,6 +597,7 @@ export default function Order() {
         .popup-label {
           font-weight: 900;
           color: #111827;
+          font-size: clamp(13px, 3.5vw, 15px);
         }
 
         .popup-textarea {
@@ -532,6 +607,9 @@ export default function Order() {
           border-radius: 12px;
           padding: 12px;
           resize: vertical;
+          font-size: 14px;
+          color: #111827;
+          background: #fff;
         }
 
         .popup-counter {
@@ -543,13 +621,14 @@ export default function Order() {
         .popup-upload-box {
           border: 2px dashed #cbd5e1;
           border-radius: 14px;
-          padding: 18px;
+          padding: 16px;
           cursor: pointer;
           display: flex;
           justify-content: space-between;
           align-items: center;
           color: #063b78;
           font-weight: 900;
+          font-size: clamp(13px, 3.5vw, 15px);
         }
 
         .popup-hidden-input {
@@ -567,8 +646,8 @@ export default function Order() {
         }
 
         .popup-preview-item img {
-          width: 80px;
-          height: 80px;
+          width: 72px;
+          height: 72px;
           border-radius: 10px;
           object-fit: cover;
         }
@@ -584,6 +663,17 @@ export default function Order() {
           width: 24px;
           height: 24px;
           cursor: pointer;
+          font-size: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .popup-main-btn {
+          width: 100%;
+          padding: 14px;
+          font-size: clamp(14px, 3.5vw, 16px);
+          border-radius: 12px;
         }
 
         .review-stars {
@@ -595,9 +685,10 @@ export default function Order() {
         .review-star {
           border: none;
           background: transparent;
-          font-size: 36px;
+          font-size: clamp(28px, 8vw, 36px);
           cursor: pointer;
           color: #d1d5db;
+          padding: 0;
         }
 
         .review-star.active {
@@ -606,19 +697,21 @@ export default function Order() {
 
         .popup-success-body {
           text-align: center;
+          display: grid;
+          gap: 16px;
         }
 
         .success-icon {
-          width: 78px;
-          height: 78px;
-          margin: 0 auto 14px;
+          width: 72px;
+          height: 72px;
+          margin: 0 auto;
           border-radius: 50%;
           background: #16a34a;
           color: white;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 42px;
+          font-size: 38px;
           font-weight: 900;
         }
 
@@ -626,6 +719,8 @@ export default function Order() {
           color: #374151;
           font-weight: 800;
           line-height: 1.7;
+          font-size: clamp(13px, 3.5vw, 15px);
+          margin: 0;
         }
 
         .success-actions {
@@ -635,20 +730,14 @@ export default function Order() {
           flex-wrap: wrap;
         }
 
-        @media (max-width: 700px) {
-          .card-row {
-            flex-direction: column;
-            align-items: stretch;
-          }
-
-          .card-actions {
-            flex-direction: row;
-            width: 100%;
-          }
-
-          .card-actions > * {
-            flex: 1;
-          }
+        .success-btn-dark,
+        .success-btn-light {
+          padding: 12px 20px;
+          border-radius: 10px;
+          font-size: clamp(13px, 3.5vw, 15px);
+          flex: 1;
+          min-width: 120px;
+          max-width: 200px;
         }
       `}</style>
 

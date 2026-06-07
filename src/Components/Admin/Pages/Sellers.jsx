@@ -20,9 +20,6 @@ import api from "../../../API/axios";
 
 const API_BASE = "https://e-safqa.runasp.net";
 
-/* ══════════════════════════════════════════════════════════════════
-   MOBILE TABLE FIX — injected <style> for ID column
-══════════════════════════════════════════════════════════════════ */
 const MOBILE_TABLE_STYLE = `
   .sl-table th.col-id,
   .sl-table td.col-id {
@@ -63,9 +60,6 @@ const MOBILE_TABLE_STYLE = `
   }
 `;
 
-/* ══════════════════════════════════════════════════════════════════
-   SAFE FETCH — swallows 404 / 405 silently, returns null
-══════════════════════════════════════════════════════════════════ */
 const safeFetch = async (fn) => {
   try {
     return await fn();
@@ -76,7 +70,6 @@ const safeFetch = async (fn) => {
   }
 };
 
-/* ── Auth token helper ── */
 const getAuthToken = () =>
   localStorage.getItem("adminToken") ||
   localStorage.getItem("token") ||
@@ -84,9 +77,6 @@ const getAuthToken = () =>
   sessionStorage.getItem("token") ||
   "";
 
-/* ══════════════════════════════════════════════════════════════════
-   HELPERS
-══════════════════════════════════════════════════════════════════ */
 const getNumber = (res) => {
   const raw = res?.data;
   if (raw === null || raw === undefined) return 0;
@@ -148,9 +138,6 @@ const normalizeSeller = (item) => {
   };
 };
 
-/* ══════════════════════════════════════════════════════════════════
-   GRAPH helpers
-══════════════════════════════════════════════════════════════════ */
 const buildMonthlyData = (verified, pending, monthLabels) => {
   const seed = (n, i) => {
     const x = Math.sin(n * 9301 + i * 49297 + 233) * 10000;
@@ -167,9 +154,6 @@ const buildMonthlyData = (verified, pending, monthLabels) => {
   });
 };
 
-/* ══════════════════════════════════════════════════════════════════
-   CHART COMPONENTS
-══════════════════════════════════════════════════════════════════ */
 function useChartJS() {
   const [ready, setReady] = useState(!!window.Chart);
   useEffect(() => {
@@ -277,9 +261,6 @@ function DonutChartJS({ data, colors }) {
   return <div style={{ position: "relative", width: "100%", height: "100%" }}><canvas ref={canvasRef} /></div>;
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   SKELETON
-══════════════════════════════════════════════════════════════════ */
 const SkeletonBlock = ({ width = "100%", height = 16, radius = 8 }) => (
   <span className="admin-skeleton-block" style={{ width, height, borderRadius: radius }} />
 );
@@ -321,9 +302,6 @@ const SkeletonTableRows = ({ rows = 6, cols = 5 }) => (
   </>
 );
 
-/* ══════════════════════════════════════════════════════════════════
-   DETAIL ROW / DOC LINK / CARD / PAGINATION
-══════════════════════════════════════════════════════════════════ */
 function DetailRow({ label, value }) {
   return (
     <p className="sl-detail-row">
@@ -439,9 +417,6 @@ function RawDetailsPanel({ data, t }) {
   return <>{rendered}</>;
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   MAIN COMPONENT
-══════════════════════════════════════════════════════════════════ */
 export default function Sellers() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -465,7 +440,6 @@ export default function Sellers() {
     document.head.appendChild(link);
   }, []);
 
-  // Inject mobile table fix styles once
   useEffect(() => {
     const styleId = "sl-mobile-table-fix";
     if (!document.getElementById(styleId)) {
@@ -474,9 +448,6 @@ export default function Sellers() {
       styleEl.textContent = MOBILE_TABLE_STYLE;
       document.head.appendChild(styleEl);
     }
-    return () => {
-      // leave styles in place; harmless to keep
-    };
   }, []);
 
   const toggleDarkMode = () => {
@@ -486,7 +457,6 @@ export default function Sellers() {
   const toggleSidebar = () => setSidebarShrinked((p) => !p);
   const isActive = (path) => location.pathname === path ? "active" : "";
 
-  /* ── state ── */
   const [pendingSellers, setPendingSellers]       = useState([]);
   const [sellers, setSellers]                     = useState([]);
   const [stats, setStats]                         = useState({ total: 0, verified: 0, pending: 0 });
@@ -551,7 +521,7 @@ export default function Sellers() {
       try {
         const uuid = await findUserIdByEmail(email);
         if (uuid) { setCacheUuid(email, uuid); return uuid; }
-      } catch (_) { /* fall through */ }
+      } catch (_) {}
     }
     if (seller?.numericId > 0) return String(seller.numericId);
     if (seller?.anyId) return seller.anyId;
@@ -598,34 +568,29 @@ export default function Sellers() {
               const numId = res2?.data?.id;
               if (numId) updateDisplayId(seller.email, numId);
             }
-          } catch (_) { /* silent */ }
+          } catch (_) {}
         })
       );
     }
   }, []); // eslint-disable-line
 
-  /* ── loadStats ── */
   const loadStats = async () => {
     const [totalRes, verifiedRes, pendingRes] = await Promise.all([
       safeFetch(getTotalSellers),
       safeFetch(getVerifiedSellers),
       safeFetch(() => getPendingSellersPage(1, 1)),
     ]);
-
     const total    = getNumber(totalRes);
     const verified = getNumber(verifiedRes);
-
     let pending = 0;
     if (pendingRes) {
       const root = pendingRes?.data || {};
       if (typeof root === "number") pending = root;
       else pending = Number(root?.totalCount || root?.totalcount || root?.total || root?.count || 0);
     }
-
     setStats({ total, verified, pending });
   };
 
-  /* ── loadPending ── */
   const loadPending = async (targetPage = pendingPage) => {
     setTableLoading(true);
     try {
@@ -650,7 +615,7 @@ export default function Sellers() {
               const r = await safeFetch(() => getSellerDetailsByUserId(seller.uuidId));
               const numId = r?.data?.id;
               if (numId) updateDisplayId(email, numId);
-            } catch (_) { /* silent */ }
+            } catch (_) {}
           }
         } else if (seller.numericId > 0) {
           updateDisplayId(email, seller.numericId);
@@ -658,7 +623,7 @@ export default function Sellers() {
             try {
               const uuid = await findUserIdByEmail(email);
               if (uuid) setCacheUuid(email, uuid);
-            } catch (_) { /* silent */ }
+            } catch (_) {}
           }
         }
       });
@@ -667,65 +632,39 @@ export default function Sellers() {
     }
   };
 
-  /* ── loadSellers ── */
   const loadSellers = async (targetPage = sellerPage) => {
     setTableLoading(true);
     try {
       const response = await api.get(`https://e-safqa.runasp.net/api/seller/GetAll`, {
-        params: {
-          page: targetPage,
-          pageSize: pageSize
-        }
+        params: { page: targetPage, pageSize: pageSize }
       });
-
       const root = response.data;
-      console.log("✅ Sellers API Response:", root);
-      
       let list = [];
-      if (Array.isArray(root?.data)) {
-        list = root.data;
-      } else if (Array.isArray(root)) {
-        list = root;
-      } else if (root?.items && Array.isArray(root.items)) {
-        list = root.items;
-      } else if (root?.results && Array.isArray(root.results)) {
-        list = root.results;
-      } else {
+      if      (Array.isArray(root?.data))    list = root.data;
+      else if (Array.isArray(root))          list = root;
+      else if (Array.isArray(root?.items))   list = root.items;
+      else if (Array.isArray(root?.results)) list = root.results;
+      else {
         for (const key of ['sellers', 'users', 'records', 'list']) {
-          if (root?.[key] && Array.isArray(root[key])) {
-            list = root[key];
-            break;
-          }
+          if (root?.[key] && Array.isArray(root[key])) { list = root[key]; break; }
         }
       }
-
       const normalized = list.map(normalizeSeller);
       setSellers(normalized);
-      
       const totalCount = root?.totalCount || root?.total || list.length;
       setSellerPage(Number(root?.currentPage || root?.page || targetPage));
       setSellerTotalPages(Math.ceil(totalCount / pageSize) || 1);
-
-      if (normalized.length > 0) {
-        resolveAllSellerUuids(normalized);
-      }
+      if (normalized.length > 0) resolveAllSellerUuids(normalized);
     } catch (err) {
       const status = Number(err?.response?.status || 0);
-      console.error("loadSellers error:", err);
-      
-      if (status === 401) {
-        setError("Session expired. Please logout and login again.");
-      } else if (status === 404) {
-        setSellers([]);
-      } else if (status !== 404 && status !== 405) {
-        setError(err?.response?.data?.message || err?.message || "Failed to load sellers.");
-      }
+      if (status === 401) setError("Session expired. Please logout and login again.");
+      else if (status === 404) setSellers([]);
+      else if (status !== 404 && status !== 405) setError(err?.response?.data?.message || err?.message || "Failed to load sellers.");
     } finally {
       setTableLoading(false);
     }
   };
 
-  /* ── loadAll ── */
   const loadAll = async () => {
     try {
       setLoading(true);
@@ -747,10 +686,12 @@ export default function Sellers() {
 
   useEffect(() => { loadAll(); }, []); // eslint-disable-line
 
-  /* ── actions ── */
   const openConfirm  = (seller, action) => { setSelectedSeller(seller); setActionType(action); setConfirmBox(true); };
   const closeConfirm = () => { if (actionLoading) return; setConfirmBox(false); setSelectedSeller(null); setActionType(""); };
 
+  // ✅ FIX: optimistic local update — same pattern as chat cancel dispute
+  // No re-fetch after suspend/restore. Update sellers list and stats in memory.
+  // Real data comes back on page refresh (just like cancel dispute in chat).
   const confirmAction = async () => {
     if (!selectedSeller) return;
     setActionLoading(true);
@@ -763,20 +704,54 @@ export default function Sellers() {
 
       if (actionType === "approve") {
         await approveSeller(userId);
-        await Promise.allSettled([loadStats(), loadPending(pendingPage), loadSellers(1)]);
+        // Remove from pending list, reload stats from API
+        setPendingSellers((prev) => prev.filter((s) => s.anyId !== selectedSeller.anyId && s.email !== selectedSeller.email));
+        await Promise.allSettled([loadStats(), loadSellers(1)]);
       }
+
       if (actionType === "reject") {
         await rejectSeller(userId);
-        await Promise.allSettled([loadStats(), loadPending(pendingPage), loadSellers(1)]);
+        // Remove from pending list, reload stats from API
+        setPendingSellers((prev) => prev.filter((s) => s.anyId !== selectedSeller.anyId && s.email !== selectedSeller.email));
+        await loadStats();
       }
+
       if (actionType === "suspend") {
         await suspendSeller(userId);
-        await Promise.allSettled([loadStats(), loadSellers(sellerPage)]);
+        // ✅ Optimistic: change status to suspended in local state only
+        setSellers((prev) =>
+          prev.map((s) =>
+            s.anyId === selectedSeller.anyId || s.email === selectedSeller.email
+              ? { ...s, status: "suspended" }
+              : s
+          )
+        );
+        // ✅ Optimistic: verified -1, total -1
+        setStats((prev) => ({
+          ...prev,
+          total:    Math.max(0, prev.total - 1),
+          verified: Math.max(0, prev.verified - 1),
+        }));
       }
+
       if (actionType === "restore") {
         await restoreSeller(userId);
-        await Promise.allSettled([loadStats(), loadSellers(sellerPage)]);
+        // ✅ Optimistic: change status to active in local state only
+        setSellers((prev) =>
+          prev.map((s) =>
+            s.anyId === selectedSeller.anyId || s.email === selectedSeller.email
+              ? { ...s, status: "active" }
+              : s
+          )
+        );
+        // ✅ Optimistic: verified +1, total +1
+        setStats((prev) => ({
+          ...prev,
+          total:    prev.total + 1,
+          verified: prev.verified + 1,
+        }));
       }
+
       closeConfirm();
     } catch (err) {
       alert(err?.response?.data?.message || err?.message || t("failedUpdateSeller", "Failed to update seller."));
@@ -789,16 +764,13 @@ export default function Sellers() {
     setDetailsOpen(true);
     setDetailsLoading(true);
     setSellerDetails(null);
-
     try {
       const detailId = await resolveDetailsId(seller);
       if (!detailId) {
         setSellerDetails({ error: "Could not resolve seller ID." });
         return;
       }
-
       const res = await safeFetch(() => getSellerDetailsByUserId(detailId));
-
       if (!res && seller?.numericId > 0 && detailId !== String(seller.numericId)) {
         const res2 = await safeFetch(() => getSellerDetailsByUserId(String(seller.numericId)));
         if (res2?.data) {
@@ -809,20 +781,10 @@ export default function Sellers() {
           return;
         }
       }
-
-      if (!res) {
-        setSellerDetails({ error: `Seller details not found for ID: ${detailId}` });
-        return;
-      }
-
+      if (!res) { setSellerDetails({ error: `Seller details not found for ID: ${detailId}` }); return; }
       const data = res?.data;
-      if (!data) {
-        setSellerDetails({ error: "No data returned from server." });
-        return;
-      }
-
+      if (!data) { setSellerDetails({ error: "No data returned from server." }); return; }
       setSellerDetails(data);
-
       const numId   = data?.id;
       const resUuid = data?.userId || data?.UserId || "";
       const email   = seller?.email;
@@ -852,7 +814,6 @@ export default function Sellers() {
     return "-";
   };
 
-  /* ── chart data ── */
   const monthKeys   = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
   const monthLabels = monthKeys.map((k) => t(k));
 
@@ -873,13 +834,9 @@ export default function Sellers() {
   );
   const donutColors = useMemo(() => ["#2d6a4f","#ffb703"], []);
 
-  /* ══════════════════════════════════════════════════════════════
-     RENDER
-  ══════════════════════════════════════════════════════════════ */
   return (
     <div className={`admin-layout admin-sellers ${darkModeActive ? "dark-admin" : ""}`} dir={isArabic ? "rtl" : "ltr"}>
 
-      {/* ── NAVBAR ── */}
       <header className="admin-navbar">
         <div className="left">
           <button className="toggle-btn" onClick={toggleSidebar}><i className="fa fa-bars" /></button>
@@ -897,7 +854,6 @@ export default function Sellers() {
         </div>
       </header>
 
-      {/* ── SIDEBAR ── */}
       <aside className={`admin-sidebar ${sidebarShrinked ? "shrinked" : ""}`}>
         <ul>
           <li><Link className={isActive("/admin")}             to="/admin">             <i className="fa fa-dashboard"          /><span>{t("dashboard",    "Dashboard")}</span></Link></li>
@@ -910,14 +866,12 @@ export default function Sellers() {
         </ul>
       </aside>
 
-      {/* ── MAIN ── */}
       <main className={`admin-content ${sidebarShrinked ? "active" : ""}`}>
         <div className="dashboard-wrapper">
           <h2 className="page-title">{t("sellersManagement","Sellers Management")}</h2>
 
           {error && <div className="alert alert-danger">{error}</div>}
 
-          {/* Stats + Charts */}
           {loading ? <SkeletonDashboard /> : (
             <section className="dashboard-section">
               <h4>{t("sellersAnalytics","Sellers Analytics")}</h4>
@@ -941,13 +895,11 @@ export default function Sellers() {
             </section>
           )}
 
-          {/* ── Pending Sellers Table ── */}
           <h3 className="section-title">{t("pendingSellerRequests","Pending Seller Requests")}</h3>
           <div className="sl-table-wrap">
             <table className="sl-table">
               <thead>
                 <tr>
-                  {/* col-id class fixes the ID column width on mobile */}
                   <th className="col-id">{t("id","ID")}</th>
                   <th>{t("business","Business")}</th>
                   <th>{t("owner",   "Owner")}</th>
@@ -963,7 +915,6 @@ export default function Sellers() {
                     ? <tr><td colSpan="6" className="sl-table-empty">{t("noPendingSellers","No pending sellers found.")}</td></tr>
                     : pendingSellers.map((s, i) => (
                       <tr key={s.uuidId || s.email || i}>
-                        {/* col-id class: keeps ID on one line, never wraps */}
                         <td className="col-id"><strong style={{ color: "#4fa3e0" }}>{getDisplayId(s)}</strong></td>
                         <td>{s.business}</td>
                         <td>{s.owner}</td>
@@ -986,13 +937,11 @@ export default function Sellers() {
               onPrev={() => loadPending(pendingPage - 1)} onNext={() => loadPending(pendingPage + 1)} t={t} />
           </div>
 
-          {/* ── All Sellers Table ── */}
           <h3 className="section-title">{t("allSellers","All Sellers")}</h3>
           <div className="sl-table-wrap">
             <table className="sl-table">
               <thead>
                 <tr>
-                  {/* col-id class fixes the ID column width on mobile */}
                   <th className="col-id">{t("id","ID")}</th>
                   <th>{t("business","Business")}</th>
                   <th>{t("owner",   "Owner")}</th>
@@ -1009,7 +958,6 @@ export default function Sellers() {
                     ? <tr><td colSpan="7" className="sl-table-empty">{t("noSellers","No sellers found.")}</td></tr>
                     : sellers.map((s, i) => (
                       <tr key={`${s.email}-${i}`}>
-                        {/* col-id class: keeps ID on one line, never wraps */}
                         <td className="col-id"><strong style={{ color: "#4fa3e0" }}>{getDisplayId(s)}</strong></td>
                         <td>{s.business}</td>
                         <td>{s.owner}</td>
@@ -1019,9 +967,10 @@ export default function Sellers() {
                           <button className="action-btn view" onClick={() => openDetails(s)}>{t("view","View")}</button>
                         </td>
                         <td>
-                          {s.status === "active" || s.status === "verified"
-                            ? <button className="action-btn suspend"  onClick={() => openConfirm(s, "suspend")}>{t("suspend","Suspend")}</button>
-                            : <button className="action-btn activate" onClick={() => openConfirm(s, "restore")}>{t("restore","Restore")}</button>}
+                          {s.status === "suspended"
+                            ? <button className="action-btn activate" onClick={() => openConfirm(s, "restore")}>{t("restore","Restore")}</button>
+                            : <button className="action-btn suspend"  onClick={() => openConfirm(s, "suspend")}>{t("suspend","Suspend")}</button>
+                          }
                         </td>
                       </tr>
                     ))
@@ -1034,7 +983,6 @@ export default function Sellers() {
         </div>
       </main>
 
-      {/* ── Confirm Modal ── */}
       {confirmBox && (
         <div className="confirm-overlay">
           <div className="confirm-modal">
@@ -1060,7 +1008,6 @@ export default function Sellers() {
         </div>
       )}
 
-      {/* ── Details Modal (fullscreen) ── */}
       {detailsOpen && (
         <div
           className="confirm-overlay"
@@ -1143,7 +1090,6 @@ export default function Sellers() {
         </div>
       )}
 
-      {/* ── Lightbox ── */}
       {lightboxSrc && (
         <div
           onClick={() => setLightboxSrc("")}
