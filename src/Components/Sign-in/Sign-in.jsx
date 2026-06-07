@@ -717,15 +717,46 @@ export default function Signin() {
     );
   }
 
-  function handleGoogleLoginClick() { setGeneralError(""); setLoginMethod("google"); setAccountModalOpen(true); }
+  // AFTER (correct order: Google first → modal after token received)
+function handleGoogleLoginClick() {
+  setGeneralError("");
+  pendingSocialAccountTypeRef.current = "buyer"; // default, will be overridden
+  if (!GOOGLE_CLIENT_ID) { const msg = t("googleEnvMissing"); setGeneralError(msg); toast.error(msg); return; }
+  if (!googleReady || !window.google?.accounts?.id) { const msg = t("googleNotReady"); setGeneralError(msg); toast.error(msg); return; }
+  
+  // ✅ Re-initialize with a callback that opens the modal AFTER token received
+  window.google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: async (response) => {
+      const idToken = response?.credential;
+      if (!idToken) { const msg = t("googleTokenMissing"); setGeneralError(msg); toast.error(msg); return; }
+      // ✅ Store token, then ask account type
+      pendingSocialAccountTypeRef.current = idToken; // temporarily store token
+      setLoginMethod("google");
+      setAccountModalOpen(true);
+    },
+    auto_select: false,
+    cancel_on_tap_outside: true,
+  });
+
+  window.google.accounts.id.prompt((n) => {
+    if (n.isNotDisplayed?.()) { const msg = t("googlePromptNotDisplayed"); setGeneralError(msg); toast.error(msg); }
+    else if (n.isSkippedMoment?.()) { const msg = t("googlePromptSkipped"); setGeneralError(msg); toast.info(msg); }
+  });
+}
   function handleFacebookLoginClick() { setGeneralError(""); setLoginMethod("facebook"); setAccountModalOpen(true); }
 
-  function handleAccountTypeSelect(accountType) {
-    const actualAccountType = normalizeAccountType(accountType);
-    if (loginMethod === "google") { setAccountModalOpen(false); startGoogleLogin(actualAccountType); return; }
-    if (loginMethod === "facebook") { setAccountModalOpen(false); startFacebookLogin(actualAccountType); return; }
-    handlePasswordLogin(formik.values, actualAccountType);
+function handleAccountTypeSelect(accountType) {
+  const actualAccountType = normalizeAccountType(accountType);
+  if (loginMethod === "google") {
+    const idToken = pendingSocialAccountTypeRef.current; // retrieve stored token
+    setAccountModalOpen(false);
+    handleGoogleBackend(idToken, actualAccountType); // ✅ send token + account type
+    return;
   }
+  if (loginMethod === "facebook") { setAccountModalOpen(false); startFacebookLogin(actualAccountType); return; }
+  handlePasswordLogin(formik.values, actualAccountType);
+}
 
   return (
     <>
