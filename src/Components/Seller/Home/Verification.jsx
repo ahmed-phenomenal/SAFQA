@@ -116,6 +116,9 @@ const FILE_KEYS = {
 };
 const clearAllFilesFromStorage = () => Object.values(FILE_KEYS).forEach(clearFileFromStorage);
 
+/* ─── Small delay to ensure localStorage writes are flushed ─────── */
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /* ─── Notifications gate ─────────────────────────────────────────── */
 const checkIsVerifiedViaNotifications = async () => {
   try {
@@ -406,9 +409,12 @@ export default function Verification() {
     if (file && FILE_KEYS[fieldName]) await saveFileToStorage(FILE_KEYS[fieldName], file);
   };
 
-  const validateStep = () => {
+  /* ─── Validate only the current step's fields ───────────────────── */
+  const validateStep = (stepIndex) => {
+    const step = stepIndex ?? currentStep;
     const newErrors = {};
-    if (currentStep === 0) {
+
+    if (step === 0) {
       const phoneDigits = getDigitsOnly(formData.sellerNumber);
       if (!formData.sellerName.trim()) newErrors.sellerName = t("storeNameRequired");
       if (!phoneDigits) newErrors.sellerNumber = t("phoneRequired");
@@ -419,7 +425,8 @@ export default function Verification() {
       else if (formData.sellerDescription.length > 650) newErrors.sellerDescription = t("descriptionMax650");
       if (formData.sellerLogo) { const err = validateFile(formData.sellerLogo); if (err) newErrors.sellerLogo = err; }
     }
-    if (currentStep === 1) {
+
+    if (step === 1) {
       if (!formData.nationalIdFront) newErrors.nationalIdFront = t("nationalFrontRequired");
       if (!formData.nationalIdBack) newErrors.nationalIdBack = t("nationalBackRequired");
       if (!formData.selfieWithId) newErrors.selfieWithId = t("selfieRequired");
@@ -427,7 +434,8 @@ export default function Verification() {
       if (formData.nationalIdBack) { const err = validateFile(formData.nationalIdBack); if (err) newErrors.nationalIdBack = err; }
       if (formData.selfieWithId) { const err = validateFile(formData.selfieWithId); if (err) newErrors.selfieWithId = err; }
     }
-    if (currentStep === 2) {
+
+    if (step === 2) {
       if (!formData.commercialRegistration) newErrors.commercialRegistration = t("commercialRegisterRequired");
       if (!formData.taxId) newErrors.taxId = t("taxIdRequired");
       if (!formData.ownerNationalIdFront) newErrors.ownerNationalIdFront = t("ownerFrontRequired");
@@ -445,19 +453,22 @@ export default function Verification() {
         if (!Number.isFinite(instaPayAsNumber) || instaPayAsNumber > MAX_INT_32) newErrors.instaPayNumber = t("instaPayInvalid");
       }
     }
+
     setErrors(newErrors);
     if (Object.keys(newErrors).length > 0) { setGeneralError(""); setGeneralSuccess(""); }
     return Object.keys(newErrors).length === 0;
   };
 
   /* ─── submitAllToBackend ─────────────────────────────────────────
-     FIXED payload keys to match seller.js function signatures:
-     
-     createSeller     → { StoreName, PhoneNumber, CityId, BusinessType, Description, Logo }
-     personalVerification → { NationalIdFront, NationalIdBack, SelfieWithId }  (or FormData)
-     businessVerification → { CommercialRegister, TaxId, OwnerNationalIdFront,
-                               OwnerNationalIdBack, BankName, AccountName, IBAN,
-                               LocalAccountNumber, instaPayNumber }
+     KEY DESIGN: All 3 steps' data is collected in state before this
+     is called. We submit sequentially here, with a small sleep after
+     createSeller so the token write to localStorage is guaranteed to
+     be visible when getVerificationFlowTokens() re-reads it.
+
+     On 409 at any step → treat as success and continue to next step.
+     personalVerification and businessVerification both re-read tokens
+     fresh from storage each time, so they always get the sellerToken
+     that createSeller (or its 409 handler) wrote.
   ───────────────────────────────────────────────────────────────── */
   const submitAllToBackend = async () => {
     const alreadyVerifiedAtStart = await checkIsVerifiedViaNotifications();
@@ -493,8 +504,14 @@ export default function Verification() {
       );
     }
 
+    // FIX: Small delay after createSeller so the sellerToken that was just
+    // written to localStorage is guaranteed readable by the next step.
+    // Without this, on 409 the synchronous writeBoth might not be visible
+    // to getVerificationFlowTokens() in the very next microtask.
+    await sleep(50);
+
     /* ── STEP 2: Personal Verification ──
-       Pass files directly — seller.js builds the FormData internally
+       Files passed directly — seller.js builds the FormData internally
        so the Content-Type boundary is set correctly by the browser.
     ── */
     let step2Data;
@@ -506,11 +523,16 @@ export default function Verification() {
       });
     } catch (error) {
       const status = Number(error?.response?.status || 0);
-      if (status === 403 || status === 401) {
+      if (status === 409) {
+        // Already uploaded — treat as success and continue
+        step2Data = { ...(error?.response?.data || {}), alreadyExists: true, isSuccess: true };
+      } else if (status === 403 || status === 401) {
         const verified = await checkIsVerifiedViaNotifications();
         if (verified) return { alreadyVerified: true };
+        throw Object.assign(error, { __step: 1 });
+      } else {
+        throw Object.assign(error, { __step: 1 });
       }
-      throw Object.assign(error, { __step: 1 });
     }
 
     const step2Success = step2Data?.alreadyExists === true || looksSuccessful(step2Data);
@@ -520,6 +542,9 @@ export default function Verification() {
         { __step: 1 }
       );
     }
+
+    // Small delay for same reason — ensure any token updates from step2 are flushed
+    await sleep(50);
 
     /* ── STEP 3: Business Verification ── */
     let step3Data;
@@ -537,11 +562,16 @@ export default function Verification() {
       });
     } catch (error) {
       const status = Number(error?.response?.status || 0);
-      if (status === 403 || status === 401) {
+      if (status === 409) {
+        // Already submitted — treat as success
+        step3Data = { ...(error?.response?.data || {}), alreadyExists: true, isSuccess: true };
+      } else if (status === 403 || status === 401) {
         const verified = await checkIsVerifiedViaNotifications();
         if (verified) return { alreadyVerified: true };
+        throw Object.assign(error, { __step: 2 });
+      } else {
+        throw Object.assign(error, { __step: 2 });
       }
-      throw Object.assign(error, { __step: 2 });
     }
 
     const step3Success = step3Data?.alreadyExists === true || looksSuccessful(step3Data);
@@ -555,15 +585,23 @@ export default function Verification() {
     return { step1Data, step2Data, step3Data };
   };
 
+  /* ─── handleNext ────────────────────────────────────────────────
+     Steps 0 and 1: validate current step, then just advance the UI.
+     Step 2: validate, then submit all 3 steps to the backend at once.
+     The user fills everything in locally first; no API calls until
+     the final "Submit for Review" click.
+  ──────────────────────────────────────────────────────────────── */
   const handleNext = async () => {
     clearStepVisuals();
     setErrors({});
-    const isValid = validateStep();
+    const isValid = validateStep(currentStep);
     if (!isValid) return;
 
+    // Steps 0 and 1: just move forward, no API calls yet
     if (currentStep === 0) { setCurrentStep(1); return; }
     if (currentStep === 1) { setCurrentStep(2); return; }
 
+    // Step 2: submit everything
     if (currentStep === 2) {
       try {
         setApiLoading(true);
@@ -576,6 +614,7 @@ export default function Verification() {
         const stepFailed = error?.__step ?? 2;
         const status = Number(error?.response?.status || 0);
 
+        // 409 at any step during final submit = already done, treat as success
         if (status === 409) {
           clearDraft();
           clearAllFilesFromStorage();
@@ -585,11 +624,23 @@ export default function Verification() {
         }
 
         const hasMappedFieldErrors = applyBackendFieldErrors(error, stepFailed);
-        if (hasMappedFieldErrors) { setCurrentStep(stepFailed); setGeneralError(""); return; }
+        if (hasMappedFieldErrors) {
+          // Jump back to the step that had errors so the user can fix them
+          setCurrentStep(stepFailed);
+          setGeneralError("");
+          return;
+        }
 
-        if (stepFailed === 0) { setGeneralError(getFriendlyApiError(error, t("saveSellerFailed"))); setCurrentStep(0); }
-        else if (stepFailed === 1) { setGeneralError(getFriendlyApiError(error, t("uploadIdentityFailed"))); setCurrentStep(1); }
-        else { setGeneralError(getFriendlyApiError(error, t("submitBusinessFailed"))); }
+        if (stepFailed === 0) {
+          setGeneralError(getFriendlyApiError(error, t("saveSellerFailed")));
+          setCurrentStep(0);
+        } else if (stepFailed === 1) {
+          setGeneralError(getFriendlyApiError(error, t("uploadIdentityFailed")));
+          setCurrentStep(1);
+        } else {
+          setGeneralError(getFriendlyApiError(error, t("submitBusinessFailed")));
+          setCurrentStep(2);
+        }
       } finally {
         setApiLoading(false);
       }

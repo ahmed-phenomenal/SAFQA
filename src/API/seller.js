@@ -352,8 +352,9 @@ const normalizeVerificationStatus = (raw) => {
 
 /**
  * Always re-reads tokens from storage at call time.
- * This is critical: after createSeller persists a sellerToken,
- * subsequent calls must pick it up fresh.
+ * IMPORTANT: sellerToken is checked FIRST so that after createSeller
+ * persists it (even on 409), personalVerification and businessVerification
+ * will always pick it up.
  */
 const getVerificationFlowTokens = () => {
   const tokens = [
@@ -610,9 +611,7 @@ export const createSeller = async (payload) => {
         },
       });
 
-      // Persist the session — this writes sellerToken to storage so
-      // subsequent steps (personalVerification, businessVerification)
-      // will pick it up when they call getVerificationFlowTokens() fresh.
+      // Persist session — writes sellerToken so subsequent steps pick it up fresh.
       persistSellerSession(res);
       persistSellerSessionFromToken(token);
 
@@ -631,6 +630,7 @@ export const createSeller = async (payload) => {
         alreadyExists: false,
         isSuccess: true,
         sellerId,
+        _usedToken: token, // carry the working token forward
       };
     } catch (error) {
       lastError = error;
@@ -646,15 +646,19 @@ export const createSeller = async (payload) => {
         msg.includes("already created")
       ) {
         persistSellerIdFromAnyData(data);
-        // On 409 we still persist the token that worked so downstream steps
-        // can use it.
+
+        // FIX: On 409, ALWAYS persist the token that was used so that
+        // personalVerification and businessVerification can use it.
+        // This is the key fix — without this, subsequent steps get 403.
         persistSellerSessionFromToken(token);
+        writeBoth("sellerToken", token); // ensure it's written before next steps read storage
 
         return {
           ...data,
           alreadyExists: true,
           isSuccess: true,
           message: data?.message || data?.Message || "Seller already exists.",
+          _usedToken: token, // carry the working token forward
         };
       }
 
@@ -671,9 +675,8 @@ export const createSeller = async (payload) => {
 
 /* ─────────────────────────────────────────────────────────────────────────────
    personalVerification
-   NOTE: Tokens are re-read from storage here so the sellerToken written by
-   createSeller is always included, even though this function is called right
-   after createSeller in the same submission flow.
+   NOTE: Tokens are re-read FRESH from storage every time so the sellerToken
+   written by createSeller (even on 409) is always included.
 ───────────────────────────────────────────────────────────────────────────── */
 export const personalVerification = async (payload) => {
   // Re-read tokens FRESH — createSeller may have just written a new sellerToken
@@ -750,9 +753,12 @@ export const personalVerification = async (payload) => {
         };
       }
 
-      if (status !== 401 || i === tokens.length - 1) {
-        throw error;
+      // On 401/403 try the next token; on anything else throw immediately
+      if ((status === 401 || status === 403) && i < tokens.length - 1) {
+        continue;
       }
+
+      throw error;
     }
   }
 
@@ -761,7 +767,7 @@ export const personalVerification = async (payload) => {
 
 /* ─────────────────────────────────────────────────────────────────────────────
    businessVerification
-   NOTE: Tokens are re-read from storage here so the sellerToken written by
+   NOTE: Tokens are re-read FRESH from storage so the sellerToken written by
    createSeller / personalVerification is always included.
 ───────────────────────────────────────────────────────────────────────────── */
 export const businessVerification = async (payload) => {
@@ -899,9 +905,12 @@ export const businessVerification = async (payload) => {
         };
       }
 
-      if (status !== 401 || i === tokens.length - 1) {
-        throw error;
+      // On 401/403 try the next token; on anything else throw immediately
+      if ((status === 401 || status === 403) && i < tokens.length - 1) {
+        continue;
       }
+
+      throw error;
     }
   }
 
