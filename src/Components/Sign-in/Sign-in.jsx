@@ -14,34 +14,11 @@ import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { jwtDecode } from "jwt-decode";
 
-// ---------------------------------------------------------------------------
-// IMPORTANT — Google Cloud Console setup required for Vercel to work:
-//
-//   1. Go to: https://console.cloud.google.com/
-//   2. APIs & Services → Credentials → your OAuth 2.0 Client ID
-//   3. Under "Authorized JavaScript origins" add ALL your origins:
-//        http://localhost:5173
-//        http://localhost:3000
-//        https://your-app.vercel.app          ← THIS IS THE ONE YOU'RE MISSING
-//        https://your-custom-domain.com       ← if applicable
-//   4. Save. Changes can take up to 5 minutes to propagate.
-//
-// Without step 3 your Vercel domain is rejected by Google before any token
-// is issued — that is the root cause of the 401 you're seeing.
-//
-// The code below uses google.accounts.id (One Tap / Sign In With Google)
-// which returns a proper id_token JWT — exactly what your backend expects.
-// We trigger it by clicking the hidden rendered Google button (the only
-// reliable cross-browser way to open the account picker popup on demand).
-// ---------------------------------------------------------------------------
-
 const GOOGLE_CLIENT_ID =
   import.meta.env.VITE_GOOGLE_CLIENT_ID ||
   "532958992608-694frj530ikpti9btvkmuigpi5d52vno.apps.googleusercontent.com";
 const FACEBOOK_APP_ID = import.meta.env.VITE_FACEBOOK_APP_ID || "";
 const MAIN_COLOR = "#023E8A";
-
-// ─── Pure helpers ────────────────────────────────────────────────────────────
 
 const extractSellerIdFromToken = (token) => {
   try {
@@ -143,8 +120,6 @@ const getRoleFromToken = (token) => {
   return String(raw || "").toLowerCase().trim() || null;
 };
 
-// ─── AccountTypeModal ────────────────────────────────────────────────────────
-
 function AccountTypeModal({ open, onClose, onSelect, loading, t }) {
   if (!open) return null;
   return (
@@ -164,50 +139,28 @@ function AccountTypeModal({ open, onClose, onSelect, loading, t }) {
           boxShadow: "0 18px 45px rgba(0,0,0,0.18)",
         }}
       >
-        <h3
-          style={{
-            margin: 0, marginBottom: "10px", color: MAIN_COLOR,
-            fontSize: "22px", fontWeight: 700, textAlign: "center",
-          }}
-        >
+        <h3 style={{ margin: 0, marginBottom: "10px", color: MAIN_COLOR, fontSize: "22px", fontWeight: 700, textAlign: "center" }}>
           {t("chooseAccountType")}
         </h3>
-        <p
-          style={{
-            margin: 0, marginBottom: "20px", color: "#6c757d",
-            textAlign: "center", fontSize: "14px",
-          }}
-        >
+        <p style={{ margin: 0, marginBottom: "20px", color: "#6c757d", textAlign: "center", fontSize: "14px" }}>
           {t("continueAs")}
         </p>
         <div style={{ display: "grid", gap: "12px" }}>
           <button
             type="button" onClick={() => onSelect("buyer")} disabled={loading}
-            style={{
-              border: `1px solid ${MAIN_COLOR}`, background: "#fff",
-              color: MAIN_COLOR, borderRadius: "10px", padding: "12px 16px",
-              fontWeight: 700, cursor: loading ? "not-allowed" : "pointer",
-            }}
+            style={{ border: `1px solid ${MAIN_COLOR}`, background: "#fff", color: MAIN_COLOR, borderRadius: "10px", padding: "12px 16px", fontWeight: 700, cursor: loading ? "not-allowed" : "pointer" }}
           >
             {t("buyerAccount")}
           </button>
           <button
             type="button" onClick={() => onSelect("seller")} disabled={loading}
-            style={{
-              border: "none", background: MAIN_COLOR, color: "#fff",
-              borderRadius: "10px", padding: "12px 16px",
-              fontWeight: 700, cursor: loading ? "not-allowed" : "pointer",
-            }}
+            style={{ border: "none", background: MAIN_COLOR, color: "#fff", borderRadius: "10px", padding: "12px 16px", fontWeight: 700, cursor: loading ? "not-allowed" : "pointer" }}
           >
             {t("sellerAccount")}
           </button>
           <button
             type="button" onClick={onClose} disabled={loading}
-            style={{
-              border: "none", background: "transparent", color: "#6c757d",
-              padding: "6px", marginTop: "2px",
-              cursor: loading ? "not-allowed" : "pointer",
-            }}
+            style={{ border: "none", background: "transparent", color: "#6c757d", padding: "6px", marginTop: "2px", cursor: loading ? "not-allowed" : "pointer" }}
           >
             {t("cancel")}
           </button>
@@ -216,8 +169,6 @@ function AccountTypeModal({ open, onClose, onSelect, loading, t }) {
     </div>
   );
 }
-
-// ─── Main component ──────────────────────────────────────────────────────────
 
 export default function Signin() {
   const { t, i18n } = useTranslation();
@@ -231,17 +182,12 @@ export default function Signin() {
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [loginMethod, setLoginMethod] = useState("password");
 
-  // The hidden div where the real Google button is rendered.
-  // Clicking the inner iframe/div opens Google's account picker popup reliably.
-  const googleBtnContainerRef = useRef(null);
   const googleInitDoneRef = useRef(false);
+  const googleBtnContainerRef = useRef(null);
   const facebookInitializedRef = useRef(false);
-
-  // Stores the account type chosen in the modal so the async Google
-  // callback can read the latest value without stale closure issues.
   const pendingAccountTypeRef = useRef("buyer");
-
-  // ─── Page setup ──────────────────────────────────────────────────────────
+  const googleCallbackRef = useRef(null);
+  const popupTimerRef = useRef(null);
 
   useEffect(() => {
     document.title = t("signInDocTitle");
@@ -249,7 +195,23 @@ export default function Signin() {
     if (link) link.href = icon;
   }, [t]);
 
-  // ─── Session helpers ──────────────────────────────────────────────────────
+  // ─── Handle token that arrives in the URL hash when the popup redirects
+  //     back to the current page (e.g. /sign-in#id_token=...).
+  //     This runs on mount AND whenever the hash changes.
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash) return;
+    const params = new URLSearchParams(hash.slice(1));
+    const idToken = params.get("id_token");
+    if (!idToken) return;
+
+    // Clean the hash from the URL immediately so it doesn't re-trigger.
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+
+    const accountType = pendingAccountTypeRef.current || "buyer";
+    handleGoogleBackend(idToken, accountType);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const clearAllTokens = () => {
     [
@@ -359,8 +321,6 @@ export default function Signin() {
     navigate(getRedirectAfterLogin(finalRole), { replace: true });
   };
 
-  // ─── Password login ───────────────────────────────────────────────────────
-
   const tryLoginRaw = async (email, password, roleParam) => {
     try {
       const res = await fetch(
@@ -410,8 +370,7 @@ export default function Signin() {
       if (!ok && !token) {
         return {
           success: false,
-          message:
-            extractMessage(root) || extractMessage(data) || t("invalidCredentials"),
+          message: extractMessage(root) || extractMessage(data) || t("invalidCredentials"),
         };
       }
       return { success: true, token, refreshToken, rawResponse: data };
@@ -476,9 +435,7 @@ export default function Signin() {
       password: "",
     },
     validationSchema: Yup.object({
-      email: Yup.string()
-        .email(t("invalidEmail"))
-        .required(t("emailRequired")),
+      email: Yup.string().email(t("invalidEmail")).required(t("emailRequired")),
       password: Yup.string().required(t("passwordRequired")),
     }),
     onSubmit: async (values) => {
@@ -513,79 +470,17 @@ export default function Signin() {
     enableReinitialize: false,
   });
 
-  // ─── Google Sign-In ───────────────────────────────────────────────────────
+  // ─── Google Sign-In ─────────────────────────────────────────────────────────
   //
-  // Strategy: use google.accounts.id (the only API that returns id_token).
-  // We render the real Google button into a hidden container, then
-  // programmatically click the iframe inside it. This is the only 100%
-  // reliable way to open the account-picker popup on demand — Google's own
-  // prompt() is suppressed when called from outside a direct user gesture.
+  // Strategy: open a popup to Google's OAuth endpoint.
+  // redirect_uri = current page (e.g. /sign-in).
+  // Google redirects back to /sign-in#id_token=...
+  // The popup's URL changes, we read the hash, post it to the opener, close.
   //
-  // PREREQUISITE: add your Vercel domain to Google Cloud Console →
-  //   APIs & Services → Credentials → your client → Authorized JavaScript origins.
-  //   Without this, Google rejects the request before issuing any token.
-
-  const initAndRenderGoogleButton = (idTokenCallback) => {
-    if (!window.google?.accounts?.id) return;
-    window.google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: idTokenCallback,
-      auto_select: false,
-      cancel_on_tap_outside: true,
-    });
-    if (googleBtnContainerRef.current) {
-      // Always re-render so the callback closure captures the latest accountType.
-      googleBtnContainerRef.current.innerHTML = "";
-      window.google.accounts.id.renderButton(googleBtnContainerRef.current, {
-        type: "standard",
-        theme: "outline",
-        size: "large",
-        shape: "rectangular",
-        text: "signin_with",
-        width: 260,
-      });
-    }
-  };
-
-  // Load GSI script once on mount.
-  useEffect(() => {
-    if (!GOOGLE_CLIENT_ID) return;
-    const existing = document.querySelector(
-      'script[src="https://accounts.google.com/gsi/client"]'
-    );
-    if (existing) {
-      // Script already loaded — render the button immediately.
-      if (window.google?.accounts?.id && !googleInitDoneRef.current) {
-        initAndRenderGoogleButton(defaultGoogleCallback);
-        googleInitDoneRef.current = true;
-      }
-      return;
-    }
-    const s = document.createElement("script");
-    s.src = "https://accounts.google.com/gsi/client";
-    s.async = true;
-    s.defer = true;
-    s.onload = () => {
-      initAndRenderGoogleButton(defaultGoogleCallback);
-      googleInitDoneRef.current = true;
-    };
-    s.onerror = () =>
-      console.error("Failed to load Google Sign-In script.");
-    document.body.appendChild(s);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Default callback — used for the initial render; gets replaced on each click.
-  const defaultGoogleCallback = async (response) => {
-    const idToken = response?.credential;
-    if (!idToken) {
-      const msg = t("googleTokenMissing") || "Google did not return a token.";
-      setGeneralError(msg);
-      toast.error(msg);
-      return;
-    }
-    await handleGoogleBackend(idToken, pendingAccountTypeRef.current || "buyer");
-  };
+  // REQUIRED in Google Cloud Console:
+  //   Authorized JavaScript origins: https://your-app.vercel.app
+  //   Authorized redirect URIs:      https://your-app.vercel.app/sign-in
+  //                                  http://localhost:5173/sign-in
 
   async function handleGoogleBackend(idToken, selectedAccountType) {
     setGeneralError("");
@@ -593,10 +488,7 @@ export default function Signin() {
     try {
       const actualAccountType = normalizeAccountType(selectedAccountType);
       const backendRole = accountTypeToBackendRole(actualAccountType);
-
-      // Your backend receives { idToken } — unchanged from before.
       const data = await googleAuth({ idToken }, { params: { role: backendRole } });
-
       const root = data?.Data || data?.data || data || {};
       const okRaw =
         root?.IsSuccess ?? root?.isSuccess ??
@@ -613,10 +505,8 @@ export default function Signin() {
         root?.Email || root?.email ||
         data?.Email || data?.email ||
         formik.values.email || "";
-
       if (!ok && !token) {
-        const msg =
-          extractMessage(root) || extractMessage(data) || t("googleLoginFailed");
+        const msg = extractMessage(root) || extractMessage(data) || t("googleLoginFailed");
         setGeneralError(msg);
         toast.error(msg);
         return;
@@ -647,65 +537,83 @@ export default function Signin() {
     pendingAccountTypeRef.current = accountType;
 
     if (!GOOGLE_CLIENT_ID) {
-      const msg = t("googleEnvMissing") || "Google Client ID not set.";
-      setGeneralError(msg);
-      toast.error(msg);
-      return;
-    }
-    if (!window.google?.accounts?.id) {
-      const msg = t("googleNotReady") || "Google Sign-In not ready. Refresh the page.";
-      setGeneralError(msg);
-      toast.error(msg);
+      toast.error(t("googleEnvMissing") || "Google Client ID not set.");
       return;
     }
 
-    // Re-initialize with a fresh callback that captures the chosen accountType,
-    // then click the real rendered Google button.
-    initAndRenderGoogleButton(async (response) => {
-      const idToken = response?.credential;
-      if (!idToken) {
-        const msg = t("googleTokenMissing") || "Google did not return a token.";
-        setGeneralError(msg);
-        toast.error(msg);
-        return;
-      }
-      await handleGoogleBackend(idToken, pendingAccountTypeRef.current || "buyer");
+    // Save chosen accountType to localStorage so the page that receives
+    // the redirect (same page, reloaded inside popup) can read it.
+    localStorage.setItem("pendingGoogleAccountType", accountType);
+
+    // redirect_uri MUST be registered in Google Cloud Console.
+    // Use the current page's exact URL (no hash, no query params).
+    const redirectUri = `${window.location.origin}${window.location.pathname}`;
+
+    const params = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: redirectUri,
+      response_type: "id_token",
+      scope: "openid email profile",
+      nonce: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2),
+      prompt: "select_account",
     });
 
-    // Small delay so renderButton finishes painting before we click.
-    setTimeout(() => {
-      if (!googleBtnContainerRef.current) return;
+    const popup = window.open(
+      `https://accounts.google.com/o/oauth2/v2/auth?${params}`,
+      "google-login",
+      "width=500,height=600,scrollbars=yes,resizable=yes,left=" +
+        (window.screenX + (window.outerWidth - 500) / 2) +
+        ",top=" +
+        (window.screenY + (window.outerHeight - 600) / 2)
+    );
 
-      // Try the iframe first (most browsers), then any [role=button] element.
-      const clickTarget =
-        googleBtnContainerRef.current.querySelector("iframe") ||
-        googleBtnContainerRef.current.querySelector("[role='button']") ||
-        googleBtnContainerRef.current.querySelector("div[tabindex='0']");
+    if (!popup) {
+      toast.error("Popup blocked. Please allow popups for this site.");
+      setGeneralError("Popup blocked. Please allow popups for this site.");
+      return;
+    }
 
-      if (clickTarget) {
-        clickTarget.click();
-      } else {
-        // Absolute fallback — Google's own prompt.
-        window.google.accounts.id.prompt((notification) => {
-          if (notification.isNotDisplayed?.()) {
-            const msg =
-              t("googlePromptNotDisplayed") ||
-              "Google sign-in could not be shown. Ensure your domain is in Google Cloud Console.";
+    // Poll the popup URL until it redirects back to our origin with the token.
+    if (popupTimerRef.current) clearInterval(popupTimerRef.current);
+
+    popupTimerRef.current = setInterval(() => {
+      try {
+        // This throws a cross-origin error while Google's page is open —
+        // that is expected and we ignore it. Once it redirects back to our
+        // origin we can read the URL.
+        const href = popup.location.href;
+
+        if (href && href.includes(window.location.origin)) {
+          clearInterval(popupTimerRef.current);
+
+          const hash = new URLSearchParams(popup.location.hash.slice(1));
+          const idToken = hash.get("id_token");
+
+          popup.close();
+
+          if (idToken) {
+            const savedType =
+              localStorage.getItem("pendingGoogleAccountType") || "buyer";
+            localStorage.removeItem("pendingGoogleAccountType");
+            handleGoogleBackend(idToken, savedType);
+          } else {
+            const msg = t("googleTokenMissing") || "Google did not return a token.";
             setGeneralError(msg);
             toast.error(msg);
-          } else if (notification.isSkippedMoment?.()) {
-            const msg =
-              t("googlePromptSkipped") ||
-              "Google sign-in was skipped. Please try again.";
-            setGeneralError(msg);
-            toast.info(msg);
           }
-        });
+        }
+      } catch {
+        // Cross-origin error — popup is still on Google's domain, keep waiting.
       }
-    }, 150);
+
+      // If user closed the popup manually.
+      if (popup.closed) {
+        clearInterval(popupTimerRef.current);
+      }
+    }, 300);
   }
 
-  // ─── Facebook Sign-In ─────────────────────────────────────────────────────
+  // ─── Facebook Sign-In ───────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!FACEBOOK_APP_ID) return;
@@ -751,10 +659,7 @@ export default function Signin() {
     try {
       const actualAccountType = normalizeAccountType(selectedAccountType);
       const backendRole = accountTypeToBackendRole(actualAccountType);
-      const data = await facebookAuth(
-        { accessToken },
-        { params: { role: backendRole } }
-      );
+      const data = await facebookAuth({ accessToken }, { params: { role: backendRole } });
       const root = data?.Data || data?.data || data || {};
       const okRaw =
         root?.IsSuccess ?? root?.isSuccess ??
@@ -772,8 +677,7 @@ export default function Signin() {
         data?.Email || data?.email ||
         formik.values.email || "";
       if (!ok && !token) {
-        const msg =
-          extractMessage(root) || extractMessage(data) || t("facebookLoginFailed");
+        const msg = extractMessage(root) || extractMessage(data) || t("facebookLoginFailed");
         setGeneralError(msg);
         toast.error(msg);
         return;
@@ -828,8 +732,6 @@ export default function Signin() {
     );
   }
 
-  // ─── Modal dispatch ───────────────────────────────────────────────────────
-
   function handleGoogleLoginClick() {
     setGeneralError("");
     setLoginMethod("google");
@@ -856,8 +758,6 @@ export default function Signin() {
     handlePasswordLogin(formik.values, at);
   }
 
-  // ─── Render ───────────────────────────────────────────────────────────────
-
   return (
     <>
       <Navbar />
@@ -873,17 +773,13 @@ export default function Signin() {
               disabled={loading}
               style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}
             >
-              {/* Email */}
               <div className="input-group mb-4">
                 <input
                   type="email"
                   name="email"
                   className="form-control p-2"
                   placeholder={t("emailPlaceholder")}
-                  onChange={(e) => {
-                    setGeneralError("");
-                    formik.handleChange(e);
-                  }}
+                  onChange={(e) => { setGeneralError(""); formik.handleChange(e); }}
                   onBlur={formik.handleBlur}
                   value={formik.values.email}
                 />
@@ -892,34 +788,23 @@ export default function Signin() {
                 <div className="alert alert-danger">{formik.errors.email}</div>
               )}
 
-              {/* Password */}
-              <div
-                className="input-group mb-5"
-                style={{ position: "relative" }}
-              >
+              <div className="input-group mb-5" style={{ position: "relative" }}>
                 <input
                   type="password"
                   name="password"
                   className="form-control p-2"
                   placeholder={t("passwordPlaceholder")}
-                  onChange={(e) => {
-                    setGeneralError("");
-                    formik.handleChange(e);
-                  }}
+                  onChange={(e) => { setGeneralError(""); formik.handleChange(e); }}
                   onBlur={formik.handleBlur}
                   value={formik.values.password}
                 />
               </div>
               {formik.touched.password && formik.errors.password && (
-                <div className="alert alert-danger">
-                  {formik.errors.password}
-                </div>
+                <div className="alert alert-danger">{formik.errors.password}</div>
               )}
 
               <div className="forgot-wrapper">
-                <Link to="/forget" className="forgot-text">
-                  {t("forgotPassword")}
-                </Link>
+                <Link to="/forget" className="forgot-text">{t("forgotPassword")}</Link>
               </div>
 
               <div className="button-wrapper">
@@ -929,8 +814,7 @@ export default function Signin() {
                   disabled={loading || !formik.isValid}
                   style={{
                     opacity: loading || !formik.isValid ? 0.8 : 1,
-                    cursor:
-                      loading || !formik.isValid ? "not-allowed" : "pointer",
+                    cursor: loading || !formik.isValid ? "not-allowed" : "pointer",
                     pointerEvents: loading ? "none" : "auto",
                   }}
                 >
@@ -940,26 +824,18 @@ export default function Signin() {
 
               <div className="signup-wrapper">
                 <span>{t("dontHaveAccount")}</span>
-                <Link to="/sign-up" className="signup-link">
-                  {t("signUp")}
-                </Link>
+                <Link to="/sign-up" className="signup-link">{t("signUp")}</Link>
               </div>
 
-              <div className="or-divider">
-                <span>{t("or")}</span>
-              </div>
+              <div className="or-divider"><span>{t("or")}</span></div>
 
-              {/* Social buttons + hidden real Google button */}
-              <div className="social-login" style={{ position: "relative" }}>
+              <div className="social-login">
                 <button
                   type="button"
                   className="social-box google"
                   onClick={handleGoogleLoginClick}
                   disabled={loading}
-                  style={{
-                    opacity: loading ? 0.8 : 1,
-                    cursor: loading ? "not-allowed" : "pointer",
-                  }}
+                  style={{ opacity: loading ? 0.8 : 1, cursor: loading ? "not-allowed" : "pointer" }}
                 >
                   <img src={googleLogo} alt="Google" className="social-logo" />
                   <span>{t("signInWithGoogle")}</span>
@@ -970,42 +846,11 @@ export default function Signin() {
                   className="social-box facebook"
                   onClick={handleFacebookLoginClick}
                   disabled={loading}
-                  style={{
-                    opacity: loading ? 0.8 : 1,
-                    cursor: loading ? "not-allowed" : "pointer",
-                  }}
+                  style={{ opacity: loading ? 0.8 : 1, cursor: loading ? "not-allowed" : "pointer" }}
                 >
-                  <img
-                    src={facebookLogo}
-                    alt="Facebook"
-                    className="social-logo"
-                  />
+                  <img src={facebookLogo} alt="Facebook" className="social-logo" />
                   <span>{t("signInWithFacebook")}</span>
                 </button>
-
-                {/*
-                  Hidden container for the real Google Sign-In button.
-                  We render the genuine Google iframe here so we can
-                  programmatically click it — the only reliable way to open
-                  Google's account picker without the One Tap cooldown.
-                  `visibility: hidden` hides it visually but keeps it
-                  interactable (unlike display:none which blocks clicks).
-                */}
-                <div
-                  ref={googleBtnContainerRef}
-                  aria-hidden="true"
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "1px",
-                    height: "1px",
-                    overflow: "hidden",
-                    opacity: 0,
-                    pointerEvents: "none", // clicks are triggered programmatically
-                    zIndex: -1,
-                  }}
-                />
               </div>
             </fieldset>
           </form>

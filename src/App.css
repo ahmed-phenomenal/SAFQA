@@ -6269,3 +6269,77 @@ body.dark .code .terms-label {
     font-size: 17px;
   }
 }
+@media (max-width: 700px) {
+  .orders {
+    padding: 16px 10px 60px;
+  }
+
+  .orders-title {
+    font-size: 24px;
+    margin-bottom: 16px;
+  }
+
+  .order-card {
+    padding: 14px;
+  }
+
+  .card-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .card-images {
+    justify-content: flex-start;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .card-images img,
+  .card-image-empty {
+    width: 80px;
+    height: 80px;
+    flex-shrink: 0;
+  }
+
+  .card-actions {
+    flex-direction: row;
+    width: 100%;
+    min-width: unset;
+  }
+
+  .card-actions > * {
+    flex: 1;
+  }
+
+  .progress-actions {
+    align-items: center;
+  }
+
+  .progress-actions .btn-track {
+    flex: 1;
+  }
+
+  .progress-actions .arrow-link {
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+
+  .popup-box {
+    padding: 18px 14px;
+    border-radius: 14px;
+  }
+
+  .popup-title {
+    font-size: 18px;
+  }
+}
+
+@media (max-width: 380px) {
+  .card-images img,
+  .card-image-empty {
+    width: 70px;
+    height: 70px;
+  }
+}

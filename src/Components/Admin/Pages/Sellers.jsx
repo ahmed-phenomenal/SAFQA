@@ -21,6 +21,49 @@ import api from "../../../API/axios";
 const API_BASE = "https://e-safqa.runasp.net";
 
 /* ══════════════════════════════════════════════════════════════════
+   MOBILE TABLE FIX — injected <style> for ID column
+══════════════════════════════════════════════════════════════════ */
+const MOBILE_TABLE_STYLE = `
+  .sl-table th.col-id,
+  .sl-table td.col-id {
+    white-space: nowrap;
+    min-width: 56px;
+    width: 56px;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+  }
+
+  @media (max-width: 768px) {
+    .sl-table-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .sl-table {
+      min-width: 560px;
+      table-layout: auto;
+    }
+    .sl-table th.col-id,
+    .sl-table td.col-id {
+      min-width: 52px;
+      width: 52px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .sl-table {
+      min-width: 480px;
+    }
+    .sl-table th.col-id,
+    .sl-table td.col-id {
+      min-width: 48px;
+      width: 48px;
+    }
+  }
+`;
+
+/* ══════════════════════════════════════════════════════════════════
    SAFE FETCH — swallows 404 / 405 silently, returns null
 ══════════════════════════════════════════════════════════════════ */
 const safeFetch = async (fn) => {
@@ -265,7 +308,7 @@ const SkeletonTableRows = ({ rows = 6, cols = 5 }) => (
     {Array.from({ length: rows }).map((_, r) => (
       <tr key={r}>
         {Array.from({ length: cols }).map((__, c) => (
-          <td key={c}>
+          <td key={c} className={c === 0 ? "col-id" : ""}>
             <SkeletonBlock
               width={c === 0 ? 40 : c === cols - 1 ? 82 : "85%"}
               height={c === cols - 1 ? 32 : 14}
@@ -420,6 +463,20 @@ export default function Sellers() {
     const link = document.querySelector("link[rel~='icon']") || document.createElement("link");
     link.rel = "icon"; link.href = icon;
     document.head.appendChild(link);
+  }, []);
+
+  // Inject mobile table fix styles once
+  useEffect(() => {
+    const styleId = "sl-mobile-table-fix";
+    if (!document.getElementById(styleId)) {
+      const styleEl = document.createElement("style");
+      styleEl.id = styleId;
+      styleEl.textContent = MOBILE_TABLE_STYLE;
+      document.head.appendChild(styleEl);
+    }
+    return () => {
+      // leave styles in place; harmless to keep
+    };
   }, []);
 
   const toggleDarkMode = () => {
@@ -610,14 +667,10 @@ export default function Sellers() {
     }
   };
 
-  /* ══════════════════════════════════════════════════════════════
-     loadSellers — fetches from https://e-safqa.runasp.net/api/seller/GetAll?page=1&pageSize=10
-     with pagination params
-  ══════════════════════════════════════════════════════════════ */
+  /* ── loadSellers ── */
   const loadSellers = async (targetPage = sellerPage) => {
     setTableLoading(true);
     try {
-      // Use the full URL with the correct port and endpoint
       const response = await api.get(`https://e-safqa.runasp.net/api/seller/GetAll`, {
         params: {
           page: targetPage,
@@ -628,7 +681,6 @@ export default function Sellers() {
       const root = response.data;
       console.log("✅ Sellers API Response:", root);
       
-      // Handle different response structures
       let list = [];
       if (Array.isArray(root?.data)) {
         list = root.data;
@@ -639,7 +691,6 @@ export default function Sellers() {
       } else if (root?.results && Array.isArray(root.results)) {
         list = root.results;
       } else {
-        // If no array found, try to extract from any property that might contain the list
         for (const key of ['sellers', 'users', 'records', 'list']) {
           if (root?.[key] && Array.isArray(root[key])) {
             list = root[key];
@@ -651,12 +702,10 @@ export default function Sellers() {
       const normalized = list.map(normalizeSeller);
       setSellers(normalized);
       
-      // Extract pagination info from response
       const totalCount = root?.totalCount || root?.total || list.length;
       setSellerPage(Number(root?.currentPage || root?.page || targetPage));
       setSellerTotalPages(Math.ceil(totalCount / pageSize) || 1);
 
-      // Background UUID resolution for suspend/restore
       if (normalized.length > 0) {
         resolveAllSellerUuids(normalized);
       }
@@ -665,11 +714,9 @@ export default function Sellers() {
       console.error("loadSellers error:", err);
       
       if (status === 401) {
-        console.error("Authentication failed. Please login again.");
         setError("Session expired. Please logout and login again.");
       } else if (status === 404) {
-        console.warn("API endpoint not found. The endpoint might be empty or not exist.");
-        setSellers([]); // Set empty array instead of error for 404
+        setSellers([]);
       } else if (status !== 404 && status !== 405) {
         setError(err?.response?.data?.message || err?.message || "Failed to load sellers.");
       }
@@ -900,7 +947,8 @@ export default function Sellers() {
             <table className="sl-table">
               <thead>
                 <tr>
-                  <th>{t("id","ID")}</th>
+                  {/* col-id class fixes the ID column width on mobile */}
+                  <th className="col-id">{t("id","ID")}</th>
                   <th>{t("business","Business")}</th>
                   <th>{t("owner",   "Owner")}</th>
                   <th>{t("email",   "Email")}</th>
@@ -915,7 +963,8 @@ export default function Sellers() {
                     ? <tr><td colSpan="6" className="sl-table-empty">{t("noPendingSellers","No pending sellers found.")}</td></tr>
                     : pendingSellers.map((s, i) => (
                       <tr key={s.uuidId || s.email || i}>
-                        <td><strong style={{ color: "#4fa3e0" }}>{getDisplayId(s)}</strong></td>
+                        {/* col-id class: keeps ID on one line, never wraps */}
+                        <td className="col-id"><strong style={{ color: "#4fa3e0" }}>{getDisplayId(s)}</strong></td>
                         <td>{s.business}</td>
                         <td>{s.owner}</td>
                         <td>{s.email}</td>
@@ -943,7 +992,8 @@ export default function Sellers() {
             <table className="sl-table">
               <thead>
                 <tr>
-                  <th>{t("id","ID")}</th>
+                  {/* col-id class fixes the ID column width on mobile */}
+                  <th className="col-id">{t("id","ID")}</th>
                   <th>{t("business","Business")}</th>
                   <th>{t("owner",   "Owner")}</th>
                   <th>{t("email",   "Email")}</th>
@@ -959,7 +1009,8 @@ export default function Sellers() {
                     ? <tr><td colSpan="7" className="sl-table-empty">{t("noSellers","No sellers found.")}</td></tr>
                     : sellers.map((s, i) => (
                       <tr key={`${s.email}-${i}`}>
-                        <td><strong style={{ color: "#4fa3e0" }}>{getDisplayId(s)}</strong></td>
+                        {/* col-id class: keeps ID on one line, never wraps */}
+                        <td className="col-id"><strong style={{ color: "#4fa3e0" }}>{getDisplayId(s)}</strong></td>
                         <td>{s.business}</td>
                         <td>{s.owner}</td>
                         <td>{s.email}</td>
