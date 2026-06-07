@@ -304,13 +304,22 @@ export default function Announcements() {
       {/* ── MAIN CONTENT ── */}
       <main className={`admin-content ${sidebarShrinked ? "active" : ""}`}>
         <div className="ann-page">
-          <h2 className="ann-page-title">
+
+          {/* ── FIX: inline color so dark mode always shows white ── */}
+          <h2
+            className="ann-page-title"
+            style={{ color: darkModeActive ? "#f8fafc" : undefined }}
+          >
             {t("globalAnnouncements", "Global Announcements")}
           </h2>
 
           {/* ── Send box ── */}
           <section className="ann-send-box">
-            <h4 className="ann-send-title">
+            {/* ── FIX: inline color so dark mode always shows white ── */}
+            <h4
+              className="ann-send-title"
+              style={{ color: darkModeActive ? "#f8fafc" : undefined }}
+            >
               <i className="fa fa-paper-plane" />
               {t("sendGlobalAnnouncement", "Send Global Announcement")}
             </h4>
@@ -457,7 +466,11 @@ export default function Announcements() {
 
           {/* ── Stats ── */}
           <section className="ann-stats-section">
-            <h4 className="ann-stats-title">
+            {/* ── FIX: inline color so dark mode always shows white ── */}
+            <h4
+              className="ann-stats-title"
+              style={{ color: darkModeActive ? "#f8fafc" : undefined }}
+            >
               {t("announcementsSummary", "Announcements Summary")}
             </h4>
             <div className="ann-stats-grid">
@@ -482,10 +495,10 @@ export default function Announcements() {
                   backgroundColor: darkModeActive ? "#1e293b" : "#f8fafc",
                   borderBottom: `1px solid ${darkModeActive ? "#334155" : "#e2e8f0"}`,
                 }}>
-                  <th style={{ padding: "12px", textAlign: "left" }}>#</th>
-                  <th style={{ padding: "12px", textAlign: "left" }}>{t("title", "Title")}</th>
-                  <th style={{ padding: "12px", textAlign: "left" }}>{t("message", "Message")}</th>
-                  <th style={{ padding: "12px", textAlign: "left" }}>{t("date", "Date")}</th>
+                  <th style={{ padding: "12px", textAlign: "left", color: darkModeActive ? "#f8fafc" : undefined }}>#</th>
+                  <th style={{ padding: "12px", textAlign: "left", color: darkModeActive ? "#f8fafc" : undefined }}>{t("title", "Title")}</th>
+                  <th style={{ padding: "12px", textAlign: "left", color: darkModeActive ? "#f8fafc" : undefined }}>{t("message", "Message")}</th>
+                  <th style={{ padding: "12px", textAlign: "left", color: darkModeActive ? "#f8fafc" : undefined }}>{t("date", "Date")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -502,10 +515,10 @@ export default function Announcements() {
                     <tr key={a.id} style={{
                       borderBottom: `1px solid ${darkModeActive ? "#1e293b" : "#f1f5f9"}`,
                     }}>
-                      <td style={{ padding: "12px" }}>{i + 1}</td>
-                      <td style={{ padding: "12px", fontWeight: "500" }}>{a.title || "-"}</td>
-                      <td style={{ padding: "12px" }}>{a.content}</td>
-                      <td style={{ padding: "12px" }}>{a.date}</td>
+                      <td style={{ padding: "12px", color: darkModeActive ? "#f8fafc" : undefined }}>{i + 1}</td>
+                      <td style={{ padding: "12px", fontWeight: "500", color: darkModeActive ? "#f8fafc" : undefined }}>{a.title || "-"}</td>
+                      <td style={{ padding: "12px", color: darkModeActive ? "#f8fafc" : undefined }}>{a.content}</td>
+                      <td style={{ padding: "12px", color: darkModeActive ? "#f8fafc" : undefined }}>{a.date}</td>
                     </tr>
                   ))
                 )}

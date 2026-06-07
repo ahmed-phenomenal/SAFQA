@@ -202,7 +202,7 @@ function ChatModal({ disputeId, card, onClose, t }) {
       })
       .catch((err) => {
         console.error("[Chat] load error:", err);
-        setError("Conversation not found");
+        setError(t("conversationNotFound", "Conversation not found"));
       })
       .finally(() => setLoading(false));
   }, [disputeId]); // eslint-disable-line
@@ -703,7 +703,11 @@ export default function AdminTrackChats() {
       <main className={`admin-content ${sidebarShrinked ? "active" : ""}`}>
         <div className="admin-chat-page">
 
-          <h2 className="admin-chat-page-title">
+          {/* ── FIX: inline color so dark mode always shows white ── */}
+          <h2
+            className="admin-chat-page-title"
+            style={{ color: darkModeActive ? "#f8fafc" : undefined }}
+          >
             {t("escalatedDisputes", "Escalated Disputes")}
           </h2>
 
@@ -755,7 +759,11 @@ export default function AdminTrackChats() {
             </div>
           )}
 
-          <h3 className="admin-chat-section-title">
+          {/* ── FIX: inline color so dark mode always shows white ── */}
+          <h3
+            className="admin-chat-section-title"
+            style={{ color: darkModeActive ? "#f8fafc" : undefined }}
+          >
             {t("escalatedDisputes", "Escalated Disputes")}
             {!dataLoading && (
               <span style={{ marginLeft: 10, fontSize: 13, color: "#94a3b8", fontWeight: 400 }}>
