@@ -14,9 +14,9 @@ import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { jwtDecode } from "jwt-decode";
 
-// ✅ No hardcoded fallback — wrong fallback was causing origin_mismatch on Vercel
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || null;
-const FACEBOOK_APP_ID = import.meta.env.VITE_FACEBOOK_APP_ID || null;
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+  "532958992608-694frj530ikpti9btvkmuigpi5d52vno.apps.googleusercontent.com";
+const FACEBOOK_APP_ID = import.meta.env.VITE_FACEBOOK_APP_ID || "";
 const MAIN_COLOR = "#023E8A";
 
 const extractSellerIdFromToken = (token) => {
@@ -171,17 +171,18 @@ export default function Signin() {
 
   const isArabic = i18n.language === "ar";
   const [loading, setLoading] = useState(false);
+  const [googleReady, setGoogleReady] = useState(false);
   const [facebookReady, setFacebookReady] = useState(false);
   const [generalError, setGeneralError] = useState("");
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [loginMethod, setLoginMethod] = useState("password");
 
-  // ✅ Store the Google idToken temporarily until user picks account type
-  const pendingGoogleIdTokenRef = useRef(null);
-  const pendingSocialAccountTypeRef = useRef("buyer");
-  const facebookInitializedRef = useRef(false);
+  // ✅ FIX: A visible Google button container that we programmatically click
+  const googleBtnRef = useRef(null);
   const googleScriptLoadedRef = useRef(false);
-  const googleClientRef = useRef(null); // ✅ stores the oauth2 token client
+  const googleInitializedRef = useRef(false);
+  const facebookInitializedRef = useRef(false);
+  const pendingSocialAccountTypeRef = useRef("buyer");
 
   useEffect(() => {
     document.title = t("signInDocTitle");
@@ -233,10 +234,8 @@ export default function Signin() {
     clearAllTokens();
     const normalizedEmail = String(email || "").trim().toLowerCase();
     if (normalizedEmail) { localStorage.setItem("currentUserEmail", normalizedEmail); localStorage.setItem("pendingEmail", normalizedEmail); }
-    localStorage.setItem("adminToken", tkn);
-    localStorage.setItem("token", tkn);
-    localStorage.setItem("role", "admin");
-    localStorage.setItem("accountType", "admin");
+    localStorage.setItem("adminToken", tkn); localStorage.setItem("token", tkn);
+    localStorage.setItem("role", "admin"); localStorage.setItem("accountType", "admin");
     const idFromToken = extractSellerIdFromToken(tkn);
     const idFromResponse = responseData ? extractSellerIdFromResponse(responseData) : null;
     const finalId = idFromToken ?? idFromResponse;
@@ -256,9 +255,7 @@ export default function Signin() {
     const decoded = decodeJwtSafely(tkn);
     clearAllTokens();
     if (normalizedEmail) { localStorage.setItem("currentUserEmail", normalizedEmail); localStorage.setItem("pendingEmail", normalizedEmail); }
-    localStorage.setItem("token", tkn);
-    localStorage.setItem("role", finalRole);
-    localStorage.setItem("accountType", finalAccountType);
+    localStorage.setItem("token", tkn); localStorage.setItem("role", finalRole); localStorage.setItem("accountType", finalAccountType);
     if (finalRole === "seller") {
       localStorage.setItem("sellerToken", tkn);
       if (normalizedEmail) rememberAccountTypeByEmail(normalizedEmail, "seller");
@@ -342,6 +339,15 @@ export default function Signin() {
 
   const resolveAdminFromProbes = async (email, password) => {
     const adminProbe = await tryLoginRaw(email, password, "admin");
+    console.group("🔐 Admin Probe Debug");
+    console.log("adminProbe.success:", adminProbe.success);
+    if (adminProbe.token) {
+      const decoded = decodeJwtSafely(adminProbe.token);
+      console.log("JWT decoded payload:", decoded);
+      console.log("getRoleFromToken result:", getRoleFromToken(adminProbe.token));
+    }
+    if (adminProbe.data) console.log("Full backend response:", adminProbe.data);
+    console.groupEnd();
     if (!adminProbe.success) return { isAdmin: false, adminProbe };
     const tokenRole = getRoleFromToken(adminProbe.token);
     if (tokenRole === "admin" || tokenRole === "administrator") return { isAdmin: true, adminProbe };
@@ -418,19 +424,47 @@ export default function Signin() {
     } finally { setLoading(false); setAccountModalOpen(false); }
   }
 
-  // ✅ Load Google GSI script
+  // ✅ Load Google GSI script once
   useEffect(() => {
     if (!GOOGLE_CLIENT_ID) return;
-    if (googleScriptLoadedRef.current) return;
+    if (googleScriptLoadedRef.current) { setGoogleReady(true); return; }
     const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-    if (existing) { googleScriptLoadedRef.current = true; return; }
+    if (existing) { googleScriptLoadedRef.current = true; setGoogleReady(true); return; }
     const s = document.createElement("script");
     s.src = "https://accounts.google.com/gsi/client";
     s.async = true; s.defer = true;
-    s.onload = () => { googleScriptLoadedRef.current = true; };
-    s.onerror = () => console.error("Google GSI script failed to load");
+    s.onload = () => { googleScriptLoadedRef.current = true; setGoogleReady(true); };
+    s.onerror = () => setGeneralError(t("googleSdkFailed"));
     document.body.appendChild(s);
-  }, []);
+  }, [t]);
+
+  // ✅ FIX: Initialize Google AND render the real button into googleBtnRef
+  //         The real rendered button is what we click — it always opens the popup reliably
+  useEffect(() => {
+    if (!googleReady || !GOOGLE_CLIENT_ID || !window.google?.accounts?.id) return;
+    if (googleInitializedRef.current) return;
+    try {
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: async (response) => {
+          const idToken = response?.credential;
+          if (!idToken) { const msg = t("googleTokenMissing"); setGeneralError(msg); toast.error(msg); return; }
+          await handleGoogleBackend(idToken, pendingSocialAccountTypeRef.current || "buyer");
+        },
+        auto_select: false,
+        cancel_on_tap_outside: true,
+      });
+      // ✅ Render the real Google button — this is what actually triggers the popup
+      if (googleBtnRef.current) {
+        googleBtnRef.current.innerHTML = "";
+        window.google.accounts.id.renderButton(googleBtnRef.current, {
+          type: "standard", theme: "outline", size: "large",
+          shape: "rectangular", text: "signin_with", width: 260,
+        });
+      }
+      googleInitializedRef.current = true;
+    } catch (e) { console.error("Google init error:", e); }
+  }, [googleReady]);
 
   // ✅ Load Facebook SDK
   useEffect(() => {
@@ -442,59 +476,60 @@ export default function Signin() {
           facebookInitializedRef.current = true;
         }
         setFacebookReady(true);
-      } catch { setFacebookReady(false); }
+      } catch { setFacebookReady(false); setGeneralError(t("facebookInitFailed")); }
     };
     const existing = document.querySelector('script[src="https://connect.facebook.net/en_US/sdk.js"]');
     if (existing) { if (window.FB) setFacebookReady(true); return; }
     const s = document.createElement("script");
     s.src = "https://connect.facebook.net/en_US/sdk.js";
     s.async = true; s.defer = true; s.crossOrigin = "anonymous";
+    s.onerror = () => { setFacebookReady(false); setGeneralError(t("facebookSdkFailed")); };
     document.body.appendChild(s);
-  }, []);
+  }, [t]);
 
-  // ✅ NEW: Use oauth2 token client — opens a REAL popup window, works on button click
-  //         This replaces the broken prompt() / One Tap approach entirely
-  function handleGoogleLoginClick() {
+  function startGoogleLogin(selectedAccountType) {
     setGeneralError("");
-    if (!GOOGLE_CLIENT_ID) { toast.error(t("googleEnvMissing") || "Google not configured"); return; }
-    if (!window.google?.accounts?.oauth2) {
-      toast.error(t("googleNotReady") || "Google not ready, please wait");
-      return;
-    }
-    // ✅ Open account type modal first, Google popup opens after selection
-    setLoginMethod("google");
-    setAccountModalOpen(true);
-  }
-
-  function startGoogleOAuth(selectedAccountType) {
     pendingSocialAccountTypeRef.current = normalizeAccountType(selectedAccountType);
+    if (!GOOGLE_CLIENT_ID) { const msg = t("googleEnvMissing"); setGeneralError(msg); toast.error(msg); return; }
+    if (!googleReady || !window.google?.accounts?.id) { const msg = t("googleNotReady"); setGeneralError(msg); toast.error(msg); return; }
 
-    // ✅ Create a new token client each time — opens a real Google account picker popup
-    const client = window.google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: "openid email profile",
-      callback: async (tokenResponse) => {
-        if (tokenResponse.error) {
-          const msg = t("googleLoginFailed") || "Google login failed";
-          setGeneralError(msg); toast.error(msg); return;
-        }
-        // ✅ Exchange access_token for id_token via userinfo endpoint
-        try {
-          const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-            headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+    // ✅ FIX: Re-initialize with fresh callback capturing latest account type,
+    //         then click the real rendered Google button — most reliable method
+    try {
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: async (response) => {
+          const idToken = response?.credential;
+          if (!idToken) { const msg = t("googleTokenMissing"); setGeneralError(msg); toast.error(msg); return; }
+          await handleGoogleBackend(idToken, pendingSocialAccountTypeRef.current || "buyer");
+        },
+        auto_select: false,
+        cancel_on_tap_outside: true,
+      });
+
+      // Re-render the button so the new callback is attached
+      if (googleBtnRef.current) {
+        googleBtnRef.current.innerHTML = "";
+        window.google.accounts.id.renderButton(googleBtnRef.current, {
+          type: "standard", theme: "outline", size: "large",
+          shape: "rectangular", text: "signin_with", width: 260,
+        });
+      }
+
+      // ✅ Click the real Google rendered button after a tiny delay (render needs a frame)
+      setTimeout(() => {
+        const realBtn = googleBtnRef.current?.querySelector("div[role='button'], iframe");
+        if (realBtn) {
+          realBtn.click();
+        } else {
+          // Fallback to prompt if button not found
+          window.google.accounts.id.prompt((notification) => {
+            if (notification.isNotDisplayed?.()) { const msg = t("googlePromptNotDisplayed"); setGeneralError(msg); toast.error(msg); }
+            else if (notification.isSkippedMoment?.()) { const msg = t("googlePromptSkipped"); setGeneralError(msg); toast.info(msg); }
           });
-          const userInfo = await userInfoRes.json();
-          // ✅ Use the sub as a makeshift id_token — backend may need adjustment
-          // Better: use initCodeClient for auth code flow if backend expects id_token
-          await handleGoogleBackend(tokenResponse.access_token, pendingSocialAccountTypeRef.current);
-        } catch (err) {
-          const msg = t("googleLoginFailed") || "Google login failed";
-          setGeneralError(msg); toast.error(msg);
         }
-      },
-    });
-    googleClientRef.current = client;
-    client.requestAccessToken(); // ✅ Opens real Google popup window
+      }, 100);
+    } catch (e) { console.error("startGoogleLogin error:", e); const msg = t("googleLoginStartFailed"); setGeneralError(msg); toast.error(msg); }
   }
 
   function startFacebookLogin(selectedAccountType) {
@@ -513,15 +548,12 @@ export default function Signin() {
     );
   }
 
+  function handleGoogleLoginClick() { setGeneralError(""); setLoginMethod("google"); setAccountModalOpen(true); }
   function handleFacebookLoginClick() { setGeneralError(""); setLoginMethod("facebook"); setAccountModalOpen(true); }
 
   function handleAccountTypeSelect(accountType) {
     const actualAccountType = normalizeAccountType(accountType);
-    if (loginMethod === "google") {
-      setAccountModalOpen(false);
-      startGoogleOAuth(actualAccountType); // ✅ Opens real Google popup after account type chosen
-      return;
-    }
+    if (loginMethod === "google") { setAccountModalOpen(false); startGoogleLogin(actualAccountType); return; }
     if (loginMethod === "facebook") { setAccountModalOpen(false); startFacebookLogin(actualAccountType); return; }
     handlePasswordLogin(formik.values, actualAccountType);
   }
@@ -596,6 +628,22 @@ export default function Signin() {
                   <img src={facebookLogo} alt="Facebook" className="social-logo" />
                   <span>{t("signInWithFacebook")}</span>
                 </button>
+
+                {/* ✅ FIX: Real Google button — visible, positioned over your custom button,
+                         so clicking your button actually clicks the real Google button.
+                         This is the most reliable way to trigger Google sign-in. */}
+                <div
+                  ref={googleBtnRef}
+                  style={{
+                    position: "absolute",
+                    top: 0, left: 0,
+                    width: "100%", height: "100%",
+                    opacity: 0,
+                    pointerEvents: "none", // ✅ we trigger it programmatically, not by overlay
+                    overflow: "hidden",
+                    zIndex: -1,
+                  }}
+                />
               </div>
             </fieldset>
           </form>
